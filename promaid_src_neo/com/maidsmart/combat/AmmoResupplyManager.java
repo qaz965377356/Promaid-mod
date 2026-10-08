@@ -98,7 +98,8 @@ public final class AmmoResupplyManager {
     private static final class Mat {
         final Ingredient ing;
         final Item rep;
-        final int perBatch;
+        /** 每组个数（collectMats 合并同类材料时会自增，故不 final） */
+        int perBatch;
 
         Mat(Ingredient ing, Item rep, int perBatch) {
             this.ing = ing;
@@ -339,7 +340,7 @@ public final class AmmoResupplyManager {
                 // 取回样本（找同类堆叠抽 1 个；取不回就取不回——1 发弹药的成本，不卡流程）
                 for (int i = 0; i < inv.getSlots(); i++) {
                     ItemStack s = inv.getStackInSlot(i);
-                    if (!s.isEmpty() && ItemHandlerHelper.canItemStacksStack(s, candidateOut)) {
+                    if (!s.isEmpty() && ItemStack.isSameItemSameComponents(s, candidateOut)) {
                         inv.extractItem(i, 1, false);
                         break;
                     }

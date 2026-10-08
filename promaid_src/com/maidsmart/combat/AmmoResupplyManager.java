@@ -97,7 +97,8 @@ public final class AmmoResupplyManager {
     private static final class Mat {
         final Ingredient ing;
         final Item rep;
-        final int perBatch;
+        /** 每组个数（collectMats 合并同类材料时会自增，故不 final） */
+        int perBatch;
 
         Mat(Ingredient ing, Item rep, int perBatch) {
             this.ing = ing;
