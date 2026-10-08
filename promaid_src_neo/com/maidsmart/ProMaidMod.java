@@ -87,6 +87,10 @@ public class ProMaidMod {
         // v1.1.0 实测二百八十五：情绪价值交互（G 摸摸头 / H 抱抱，键位+服务端验证）
         net.neoforged.neoforge.common.NeoForge.EVENT_BUS.register(
                 new com.maidsmart.brew.BrewManualInteractHandler());
+        // 弹药自动补给：用枪没弹且不在战斗 → 去主人附近箱子取料合成对口径的弹药
+        //（挂在 TLM 的 MaidTickEvent 上，tick 里用 ServerLevel 判侧）
+        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.register(
+                new com.maidsmart.combat.AmmoResupplyManager.Hook());
         // v1.2.0：指标石右键女仆 = 绑定/解绑（网络层经 @EventBusSubscriber 自注册）
         net.neoforged.neoforge.common.NeoForge.EVENT_BUS.register(
                 new com.maidsmart.build.IndexStoneInteractHandler());

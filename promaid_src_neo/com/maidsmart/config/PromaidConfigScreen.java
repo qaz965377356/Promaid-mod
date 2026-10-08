@@ -4155,6 +4155,15 @@ public void render(GuiGraphics g, int index, int top, int left, int width, int h
                 "飞行作战：新的作战模式（图标=鞘翅），女仆身上【鞘翅+重锤+烟花火箭】三件齐备时激活——进入后自己在胸甲穿鞘翅、主手换重锤（烟花不必拿在手上，副手留给你放盾牌/食物），照搬 JerotesWarehouse「类玩家单位穿鞘翅用长矛」那一套：目标升空/自身坠落时张开鞘翅滑翔、烟花火箭推进接近，到目标上方后收翅俯冲用重锤猛砸（重锤下落加成要求不在滑翔状态，所以必须先收翅），落地后仍有烟花则继续起飞。三件缺任意一件 = 模式不激活，行为与普通攻击模式一致（地面近战）。本模式不响应自主切换；滑翔/俯冲全程禁止传送。关闭 = 该模式完全不工作"));
         this.rows.add(new NumRow("响应半径（格）", String.valueOf(MaidSmartConfig.COMBAT_AUTO_SWITCH_RADIUS.get()),
                 s -> setInt(MaidSmartConfig.COMBAT_AUTO_SWITCH_RADIUS, s), "响应半径（格）：主人受伤或开火时，此半径内的女仆才会响应切换"));
+        // 弹药自动补给：用枪没弹且不在战斗 → 去主人附近箱子取料，按配方合成对口径的弹药
+        this.rows.add(new BoolRow("弹药自动补给", MaidSmartConfig.AMMO_AUTO_CRAFT.get(),
+                v -> MaidSmartConfig.AMMO_AUTO_CRAFT.set(v), "弹药自动补给（默认开）：手持枪械打不响也换不上弹、且不在战斗时，女仆会去主人附近的箱子取材料（如铜锭+火药），按合成配方做出对得上这把枪口径的弹药放进自己背包（口径由枪械 mod 自己验收：TACZ 弹药/弹药箱、卓越前线各类弹药通用）；缺什么会当场用气泡说明（没配方/缺材料/走不到箱子），一次尝试后冷却（见「尝试间隔」），不会刷屏；一旦开打自动放弃、打完再补"));
+        this.rows.add(new NumRow("补给找箱半径（格）", String.valueOf(MaidSmartConfig.AMMO_CRAFT_RADIUS.get()),
+                s -> setInt(MaidSmartConfig.AMMO_CRAFT_RADIUS, s), "补给找箱半径（格，默认 16）：只翻主人身边这个范围内的箱子/桶/潜影箱，她不会为弹药满世界跑"));
+        this.rows.add(new NumRow("补给尝试间隔（秒）", String.valueOf(MaidSmartConfig.AMMO_CRAFT_COOLDOWN.get()),
+                s -> setInt(MaidSmartConfig.AMMO_CRAFT_COOLDOWN, s), "补给尝试间隔（秒，默认 60）：一次尝试（无论成败）之后至少隔这么久才会再试——失败原因每次只说一句，不会刷屏"));
+        this.rows.add(new NumRow("单次合成组数", String.valueOf(MaidSmartConfig.AMMO_CRAFT_MAX_CRAFT.get()),
+                s -> setInt(MaidSmartConfig.AMMO_CRAFT_MAX_CRAFT, s), "单次合成组数（默认 8）：一次补给最多按配方合成几组弹药（受材料与背包余量限制，做不满不会硬凑）"));
         this.rows.add(new NumRow("援护半径（格）", String.valueOf(MaidSmartConfig.COMBAT_ASSIST_RADIUS.get()),
                 s -> setInt(MaidSmartConfig.COMBAT_ASSIST_RADIUS, s), "援护半径（格，默认 16，0 = 关闭；借自别人改过的 TLM 1.5.3）：① 她没有目标时优先打「主人最近的仇人」（最近打主人的人 → 主人最近打的人，5 秒窗口内）；② 目标离她和她主人都超过这个半径就松手——不再追已经跑掉的怪（那是「追出去→被圈拽回来」的循环源头）。对象还要看得见、在她工作圈内、且非友军才生效"));
         // v1.1.0 实测二十一：武器权重可配置（选任务时加权随机——模组/原版各一条）

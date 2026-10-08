@@ -4099,6 +4099,15 @@ public class PromaidConfigScreen extends Screen {
                 "飞行作战（1.20.1）：三件套 = 鞘翅 + 任意近战武器 + 烟花火箭，齐备才激活（缺任一件则与普通攻击模式一致）。链路：遇到敌人先起跳滑翔→放烟花给「背离敌人+向上」的初速→1.5 秒后朝敌人飞→进入 3.5 格取消滑翔自由落体→触底前近战命中（结算暴击 ×1.5）→命中后切回滑翔再放烟花，如此反复。烟花用完或鞘翅损坏则模式自然失效。不响应自主切换；滑翔途中禁止传送"));
         this.rows.add(new NumRow("响应半径（格）", String.valueOf(MaidSmartConfig.COMBAT_AUTO_SWITCH_RADIUS.get()),
                 s -> setInt(MaidSmartConfig.COMBAT_AUTO_SWITCH_RADIUS, s), "响应半径（格）：主人受伤或开火时，此半径内的女仆才会响应切换"));
+        // 弹药自动补给：用枪没弹且不在战斗 → 去主人附近箱子取料，按配方合成对口径的弹药
+        this.rows.add(new BoolRow("弹药自动补给", MaidSmartConfig.AMMO_AUTO_CRAFT.get(),
+                v -> MaidSmartConfig.AMMO_AUTO_CRAFT.set(v), "弹药自动补给（默认开）：手持枪械打不响也换不上弹、且不在战斗时，女仆会去主人附近的箱子取材料（如铜锭+火药），按合成配方做出对得上这把枪口径的弹药放进自己背包（口径由枪械 mod 自己验收：TACZ 弹药/弹药箱、卓越前线各类弹药通用）；缺什么会当场用气泡说明（没配方/缺材料/走不到箱子），一次尝试后冷却（见「尝试间隔」），不会刷屏；一旦开打自动放弃、打完再补"));
+        this.rows.add(new NumRow("补给找箱半径（格）", String.valueOf(MaidSmartConfig.AMMO_CRAFT_RADIUS.get()),
+                s -> setInt(MaidSmartConfig.AMMO_CRAFT_RADIUS, s), "补给找箱半径（格，默认 16）：只翻主人身边这个范围内的箱子/桶/潜影箱，她不会为弹药满世界跑"));
+        this.rows.add(new NumRow("补给尝试间隔（秒）", String.valueOf(MaidSmartConfig.AMMO_CRAFT_COOLDOWN.get()),
+                s -> setInt(MaidSmartConfig.AMMO_CRAFT_COOLDOWN, s), "补给尝试间隔（秒，默认 60）：一次尝试（无论成败）之后至少隔这么久才会再试——失败原因每次只说一句，不会刷屏"));
+        this.rows.add(new NumRow("单次合成组数", String.valueOf(MaidSmartConfig.AMMO_CRAFT_MAX_CRAFT.get()),
+                s -> setInt(MaidSmartConfig.AMMO_CRAFT_MAX_CRAFT, s), "单次合成组数（默认 8）：一次补给最多按配方合成几组弹药（受材料与背包余量限制，做不满不会硬凑）"));
         this.rows.add(new NumRow("援护半径（格）", String.valueOf(MaidSmartConfig.COMBAT_ASSIST_RADIUS.get()),
                 s -> setInt(MaidSmartConfig.COMBAT_ASSIST_RADIUS, s), "援护半径（格，默认 16，0 = 关闭；借自别人改过的 TLM 1.5.3）：① 她没有目标时优先打「主人最近的仇人」（最近打主人的人 → 主人最近打的人，5 秒窗口内）；② 目标离她和她主人都超过这个半径就松手——不再追已经跑掉的怪（那是「追出去→被圈拽回来」的循环源头）。对象还要看得见、在她工作圈内、且非友军才生效"));
         // v1.1.0 实测二十一：武器权重可配置（选任务时加权随机——模组/原版各一条）

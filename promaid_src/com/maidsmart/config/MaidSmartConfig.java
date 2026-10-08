@@ -297,6 +297,14 @@ public static final ForgeConfigSpec.IntValue BUILD_CHEST_FETCH_COOLDOWN;
     public static final ForgeConfigSpec.IntValue COMBAT_PEARL_COOLDOWN;
     public static final ForgeConfigSpec.DoubleValue COMBAT_PEARL_RATIO;
     public static final ForgeConfigSpec.DoubleValue COMBAT_PEARL_DIST;
+    // 弹药自动补给：用枪没弹且不在战斗 → 去主人附近箱子取料，按原版配方合成对口径的弹药
+    public static final ForgeConfigSpec.BooleanValue AMMO_AUTO_CRAFT;
+    /** 弹药补给找箱半径（格）：只翻主人身边这个范围内的箱子/桶/潜影箱 */
+    public static final ForgeConfigSpec.IntValue AMMO_CRAFT_RADIUS;
+    /** 弹药补给尝试间隔（秒）：一次尝试（无论成败）之后的最短等待 */
+    public static final ForgeConfigSpec.IntValue AMMO_CRAFT_COOLDOWN;
+    /** 单次合成组数：一次补给最多按配方合成几组 */
+    public static final ForgeConfigSpec.IntValue AMMO_CRAFT_MAX_CRAFT;
     // v1.1.0：主动切换战斗模式（主人受攻击 → 附近女仆立即切战斗，威胁消失还原）
     public static final ForgeConfigSpec.BooleanValue COMBAT_AUTO_SWITCH;
     // v1.2.0：飞行作战模式（鞘翅 + 任意近战武器 + 烟花；1.20.1 无重锤 → 收翅下落命中结算暴击）
@@ -2176,6 +2184,16 @@ public static final ForgeConfigSpec.BooleanValue MISC_DIMENSION_FOLLOW;
                 .translation("config.promaid.combat.playerDamageMode").defineInRange("playerDamageMode", 4, 0, 4);
         PLAYER_DAMAGE_MAID_CAP = BUILDER.comment("玩家伤害上限比例（0-1：模式 3 时单次伤害 = 女仆最大生命 × 此比例；默认 0.1 = 10%）")
                 .translation("config.promaid.combat.playerDamageMaidCap").defineInRange("playerDamageMaidCap", 0.1, 0.01, 0.5);
+        // 弹药自动补给：用枪的女仆没弹且不在战斗时，去主人附近的箱子取材料（如铜锭+火药），
+        // 按原版合成配方做出对得上这把枪口径的弹药放进自己背包（探针法验收，见 AmmoResupplyManager）
+        AMMO_AUTO_CRAFT = BUILDER.comment("弹药自动补给（默认开）：手持枪械打不响也换不上弹、且不在战斗时，女仆会去**主人附近**的箱子取材料（如铜锭+火药），按合成配方做出**对得上这把枪口径**的弹药放进自己背包（口径由枪械 mod 自己验收）；缺什么会当场用气泡说明（没配方/缺材料/走不到箱子），不会频繁尝试；一旦开打自动放弃、打完再补")
+                .translation("config.promaid.combat.ammoAutoCraft").define("ammoAutoCraft", true);
+        AMMO_CRAFT_RADIUS = BUILDER.comment("弹药补给找箱半径（格，默认 16）：只翻主人身边这个范围内的箱子/桶/潜影箱，不会满世界跑")
+                .translation("config.promaid.combat.ammoCraftRadius").defineInRange("ammoCraftRadius", 16, 4, 64);
+        AMMO_CRAFT_COOLDOWN = BUILDER.comment("弹药补给尝试间隔（秒，默认 60）：一次尝试（无论成败）之后至少隔这么久才会再试——失败原因会用气泡说一次，不会刷屏")
+                .translation("config.promaid.combat.ammoCraftCooldown").defineInRange("ammoCraftCooldown", 60, 15, 600);
+        AMMO_CRAFT_MAX_CRAFT = BUILDER.comment("单次合成组数（默认 8）：一次补给最多按配方合成几组弹药（受材料与背包余量限制，做不满不会硬凑）")
+                .translation("config.promaid.combat.ammoCraftMaxCraft").defineInRange("ammoCraftMaxCraft", 8, 1, 64);
         // v1.1.0：主动切换战斗模式——主人被敌对生物攻击时，附近非自保女仆无论什么任务
         // 都立即切战斗（枪械优先，其余按背包武器随机），威胁消失后自动还原原任务
         COMBAT_AUTO_SWITCH = BUILDER.comment("主动切换战斗模式（主人被敌对生物攻击时，附近女仆无论什么任务都立即切战斗保护主人；默认开启）")
