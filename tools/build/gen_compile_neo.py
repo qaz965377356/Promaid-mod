@@ -32,14 +32,20 @@ def find(*cands):
             return c
     return None
 
-LIB = r'D:\.minecraft\libraries'
-neo = find(os.path.join(LIB, r'net\neoforged\neoforge\21.1.250\neoforge-21.1.250-client.jar'),
-           os.path.join(LIB, r'net\neoforged\neoforge\21.1.250\neoforge-21.1.250-universal.jar'))
-neou = os.path.join(LIB, r'net\neoforged\neoforge\21.1.250\neoforge-21.1.250-universal.jar')
-mc = find(os.path.join(LIB, r'net\minecraft\client\1.21.1-20240808.144430\client-1.21.1-20240808.144430-srg.jar'))
-tlm = find(r'D:\.minecraft\versions\1.21.1-NeoForge_21.1.250\mods\touhoulittlemaid-1.5.3-neoforge+mc1.21.1.jar')
+# v1.3.0 mac 适配：库目录可用环境变量 PROMAID_LIB 覆盖（默认保持 Windows 原路径不变）。
+# 路径统一用 os.path.join 的分段写法——正/反斜杠段在两个平台都能被 os.path.exists 解析。
+LIB = os.environ.get('PROMAID_LIB', r'D:\.minecraft\libraries')
+neo = find(os.path.join(LIB, 'net', 'neoforged', 'neoforge', '21.1.250', 'neoforge-21.1.250-client.jar'),
+           os.path.join(LIB, 'net', 'neoforged', 'neoforge', '21.1.250', 'neoforge-21.1.250-universal.jar'))
+neou = os.path.join(LIB, 'net', 'neoforged', 'neoforge', '21.1.250', 'neoforge-21.1.250-universal.jar')
+mc = find(os.path.join(LIB, 'net', 'minecraft', 'client', '1.21.1-20240808.144430', 'client-1.21.1-20240808.144430-srg.jar'))
+# TLM 所在 mods 目录：Windows 照旧从 versions 下找；其它平台可用 PROMAID_TLM_MODS 指定
+_tlm_mods = os.environ.get('PROMAID_TLM_MODS',
+                           os.path.join(os.environ.get('PROMAID_MC_ROOT', r'D:\.minecraft'),
+                                        'versions', '1.21.1-NeoForge_21.1.250', 'mods'))
+tlm = find(os.path.join(_tlm_mods, 'touhoulittlemaid-1.5.3-neoforge+mc1.21.1.jar'))
 if tlm is None:
-    for p in glob.glob(r'D:\.minecraft\versions\1.21.1-NeoForge_21.1.250\mods\*touhoulittlemaid*.jar'):
+    for p in glob.glob(os.path.join(_tlm_mods, '*touhoulittlemaid*.jar')):
         tlm = p
         break
 
@@ -57,17 +63,24 @@ cp = [neo, neou, mc, tlm]
 # public 版本。顺序写反等于"靠偶然命中"，换成 universal-only classpath 或调整 jar
 # 顺序就会突然编译不过。这里改成与运行期一致的 [neo, neou, mc]，消除该隐患。
 # NeoForge platform libs (event bus, FML loader, lwjgl, distmarker)
+# v1.3.0 mac 适配：版本号改为 glob 探测（不同机器装出来的小版本号不同）
 import glob as _g
-cp += [
-    os.path.join(LIB, r'net\neoforged\bus\8.0.5\bus-8.0.5.jar'),
-    os.path.join(LIB, r'net\neoforged\fancymodloader\loader\4.0.44\loader-4.0.44.jar'),
-    os.path.join(LIB, r'net\neoforged\mergetool\2.0.0\mergetool-2.0.0-api.jar'),  # Dist/distmarker stub
-]
+
+
+def _first(*segs):
+    hits = sorted(_g.glob(os.path.join(LIB, *segs)))
+    return hits[0] if hits else None
+
+
+cp += [p for p in [
+    _first('net', 'neoforged', 'bus', '*', 'bus-*.jar'),
+    _first('net', 'neoforged', 'fancymodloader', 'loader', '*', 'loader-*.jar'),
+    _first('net', 'neoforged', 'mergetool', '*', 'mergetool-*-api.jar'),  # Dist/distmarker stub
+] if p]
 # distmarker: inside neoforge client jar? verify; lwjgl from lwjgl dir
-for p in _g.glob(os.path.join(LIB, 'org\\lwjgl\\lwjgl\\*\\lwjgl-*.jar')):
-    cp.append(p)
-for p in _g.glob(os.path.join(LIB, 'org\\lwjgl\\lwjgl-glfw\\*\\lwjgl-glfw-*.jar')):
-    cp.append(p)
+for sub in (('org', 'lwjgl', 'lwjgl'), ('org', 'lwjgl', 'lwjgl-glfw')):
+    for p in sorted(_g.glob(os.path.join(LIB, *sub, '*', 'lwjgl-*.jar'))):
+        cp.append(p)
 # copy jars to ASCII-safe paths (javac argfile encoding chokes on CJK paths)
 import shutil
 
@@ -86,34 +99,37 @@ for c in cp:
         safe.append(dst)
 cp = safe
 # minimal support libs (compile-time transitive types commonly referenced by signatures we touch)
-common = [
-    os.path.join(LIB, r'com\google\guava\guava\33.6.0-jre\guava-33.6.0-jre.jar'),
-    os.path.join(LIB, r'com\google\code\gson\gson\2.10.1\gson-2.10.1.jar'),
-    os.path.join(LIB, r'io\netty\netty-buffer\4.1.82.Final\netty-buffer-4.1.82.Final.jar'),
-    os.path.join(LIB, r'io\netty\netty-common\4.1.82.Final\netty-common-4.1.82.Final.jar'),
-    os.path.join(LIB, r'io\netty\netty-transport\4.1.82.Final\netty-transport-4.1.82.Final.jar'),
-    os.path.join(LIB, r'org\slf4j\slf4j-api\2.0.9\slf4j-api-2.0.9.jar'),
-    os.path.join(LIB, r'org\spongepowered\mixin\0.8.7\mixin-0.8.7.jar'),
-    os.path.join(LIB, r'io\github\llamalad7\mixinextras-forge\0.5.4\mixinextras-forge-0.5.4.jar'),
-    os.path.join(LIB, r'org\ow2\asm\asm\9.6\asm-9.6.jar'),
-    os.path.join(LIB, r'org\ow2\asm\asm-commons\9.6\asm-commons-9.6.jar'),
-    os.path.join(LIB, r'org\ow2\asm\asm-tree\9.6\asm-tree-9.6.jar'),
-    os.path.join(LIB, r'org\joml\joml\1.10.5\joml-1.10.5.jar'),
-    os.path.join(LIB, r'it\unimi\dsi\fastutil\8.5.18\fastutil-8.5.18.jar'),
-    os.path.join(LIB, r'org\apache\commons\commons-lang3\3.12.0\commons-lang3-3.12.0.jar'),
-    os.path.join(LIB, r'com\mojang\authlib\9.0.75\authlib-9.0.75.jar'),
-    os.path.join(LIB, r'com\mojang\brigadier\1.3.10\brigadier-1.3.10.jar'),
-    os.path.join(LIB, r'com\mojang\datafixerupper\8.0.16\datafixerupper-8.0.16.jar'),
-    os.path.join(LIB, r'com\mojang\javabridge\1.2.24\javabridge-1.2.24.jar'),
-    os.path.join(LIB, r'com\mojang\logging\1.7.12\logging-1.7.12.jar'),
-    os.path.join(LIB, r'org\apache\maven\maven-artifact\3.8.8\maven-artifact-3.8.8.jar'),
-    os.path.join(LIB, r'com\google\code\findbugs\jsr305\3.0.2\jsr305-3.0.2.jar'),
-    os.path.join(LIB, r'org\checkerframework\checker-qual\3.33.0\checker-qual-3.33.0.jar'),
+# v1.3.0 mac 适配：全部改为 glob 探测（版本号随安装器下载的版本浮动）
+common_patterns = [
+    ('com', 'google', 'guava', 'guava', '*', 'guava-*.jar'),
+    ('com', 'google', 'code', 'gson', 'gson', '*', 'gson-*.jar'),
+    ('io', 'netty', 'netty-buffer', '*', 'netty-buffer-*.jar'),
+    ('io', 'netty', 'netty-common', '*', 'netty-common-*.jar'),
+    ('io', 'netty', 'netty-transport', '*', 'netty-transport-*.jar'),
+    ('org', 'slf4j', 'slf4j-api', '*', 'slf4j-api-*.jar'),
+    ('org', 'spongepowered', 'mixin', '*', 'mixin-*.jar'),
+    ('io', 'github', 'llamalad7', 'mixinextras-*', '*', 'mixinextras-*.jar'),
+    ('org', 'ow2', 'asm', 'asm', '*', 'asm-*.jar'),
+    ('org', 'ow2', 'asm', 'asm-commons', '*', 'asm-commons-*.jar'),
+    ('org', 'ow2', 'asm', 'asm-tree', '*', 'asm-tree-*.jar'),
+    ('org', 'joml', 'joml', '*', 'joml-*.jar'),
+    ('it', 'unimi', 'dsi', 'fastutil', '*', 'fastutil-*.jar'),
+    ('org', 'apache', 'commons', 'commons-lang3', '*', 'commons-lang3-*.jar'),
+    ('com', 'mojang', 'authlib', '*', 'authlib-*.jar'),
+    ('com', 'mojang', 'brigadier', '*', 'brigadier-*.jar'),
+    ('com', 'mojang', 'datafixerupper', '*', 'datafixerupper-*.jar'),
+    ('com', 'mojang', 'javabridge', '*', 'javabridge-*.jar'),
+    ('com', 'mojang', 'logging', '*', 'logging-*.jar'),
+    ('org', 'apache', 'maven', 'maven-artifact', '*', 'maven-artifact-*.jar'),
+    ('com', 'google', 'code', 'findbugs', 'jsr305', '*', 'jsr305-*.jar'),
+    ('org', 'checkerframework', 'checker-qual', '*', 'checker-qual-*.jar'),
 ]
-for c in common:
-    p = os.path.join(LIB, c)
-    if os.path.exists(p):
-        cp.append(p)
+for seg in common_patterns:
+    hits = sorted(_g.glob(os.path.join(LIB, *seg)))
+    if hits:
+        cp.append(hits[0])
+    else:
+        print('WARN: support lib not found:', '/'.join(seg))
 
 # mixin / mixinextras availability check
 mixinjar = find(os.path.join(LIB, r'org\spongepowered\mixin\mixin\0.8.5\mixin-0.8.5.jar'))
@@ -136,7 +152,7 @@ out = ['-d', os.path.join(MOD, 'out_promaid_neo').replace('\\', '/'),
        '--release', '21',
        '-proc:none', '-nowarn', '-encoding', 'UTF-8',
        '-Xmaxerrs', '5000',
-       '-classpath', ';'.join(cp).replace('\\', '/')]
+       '-classpath', (';' if os.name == 'nt' else ':').join(cp).replace('\\', '/')]
 out += [s.replace('\\', '/') for s in srcs]
 with open(os.path.join(MOD, 'compile_neo.txt'), 'w', encoding='ascii', errors='replace') as fp:
     fp.write(' '.join('"%s"' % s for s in out))

@@ -180,3 +180,6 @@ Desktop.ini
 /nul
 /nul_scan.py
 /739
+
+# ---- mac 本地构建环境（安装器产出的 libraries，勿提交）----
+/buildenv/
