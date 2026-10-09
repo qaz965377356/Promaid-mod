@@ -1,7 +1,7 @@
 ﻿【自主挖矿（远征）】新任务 maid_smart:auto_mine（铁镐图标）：女仆自动出门远征挖矿，挖满时长回主人身边；近敌切战斗、安全继续；低血/没镐立即回城，血满自动再出发
   ①【玩家原话（规格）】「女仆如果选择的自主挖矿，则按需自己出门去挖矿，挖一定时间后传送回家/或者回主人身边。挖矿过程中如果有怪接近则进行战斗，等近距离身边安全了就继续挖，如果没血了则回到主人身边或者传送回家，中止本次挖矿。等血回满了再继续。」追加：出征方向按矿脉密度偏置；到远征点后找矿范围远一点；镐子没耐久/没镐要处理。
   ②【架构：任务 = 调度的"家"】auto_mine 任务本身不带挖矿行为——AutoMineManager（MaidTickEvent 服务）驱动状态机：RESTING（在家休整，等血+等镐）→ 出征（传送 + 切 maid_smart:mine 任务）→ AWAY（挖矿，计时）→ 回城（切回 auto_mine + 传送）→ RESTING。挖矿全程复用现有 MaidMineBehavior（锚点首次定位=脚下=远征点，传送后 resetAnchor 清旧锚/扫描游标）。
-  ③【出征方向矿脉密度偏置】8 方向 × 出征距离采样，每方向数"地表点下方 24 格、横向 ±2"的白名单矿数（isWhitelistOre 与实际开采同一张 ORE_VALUE 表），偏向矿多的方向（并列随机）；地表点自带脚下危险判定（DangerBlocks）与有界上下搜平面。
+  ③【出征方向矿脉密度偏置】8 方向 × 出征距离采样，每方向数"地表点下方 24 格、横向 ±2"的白名单矿数（isWhitelistOre 与实际开采同一张 ORE_VALUE 表），偏向矿多的方向（并列随机）；地表点自带脚下危险判定（DangerBlocks）与有界上下搜平面。【未加载区块不传送（玩家规格）】候选方向先过 hasChunkAt——未加载直接跳过该方向，绝不把女仆传进未加载区块、也不为选点强拉区块生成；8 方向全没加载 = 本轮不出征（气泡提示，等区块加载再试）。
   ④【远征找矿范围加大】远征中 MaidMineBehavior 的找矿半径读 effectiveSearchRadius = 挖矿找矿半径 × autoMineScanBoost（默认 1.5 倍，封顶 64）；非远征一字不变。
   ⑤【战斗打断】近敌判定复用 PerceptionManager.dangerActive（12 格存活敌对生物，感知同口径）；切 TLM 原生攻击任务（uid javap 实证 touhou_little_maid:attack）经 ScheduleSwitchGuard + CombatTaskCompat.prepareSwitch（武器自动装回）；战斗期间远征计时冻结，连续安全 5 秒切回挖矿；AutoCombatSwitch 若已先接管则让位（它还原的目标就是 mine 任务）。
   ⑥【低血/没镐中止】血量低于 autoMineHpAbort（默认 30%）→ 立即回城中止；镐子没耐久/没镐 → TLM 按需换镐先烧背包备镐，全没了 AutoMineManager 的 hasPickaxe（主手+背包扫可用镐）兜底收工回家。回城后 RESTING：血回到 autoMineHpResume（默认 100%）且备好镐 → 自动再出发（回血靠 TLM 膳食系统）。

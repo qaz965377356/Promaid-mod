@@ -217,7 +217,10 @@ public final class AutoMineManager {
     }
 
     /** 8 方向 × 出征距离采样：每方向数"地表点下方 24 格、横向 ±2"的白名单矿数，
-     *  偏向矿多的方向（并列随机）。区块未加载会经由 getChunk 同步加载（仅出发时一次）。 */
+     *  偏向矿多的方向（并列随机）。
+     *  【未加载区块不传送（玩家规格）】候选方向先过 hasChunkAt——未加载直接跳过该方向，
+     *  绝不把女仆传进未加载区块（也不会为了选点去强拉区块生成）；8 个方向全没加载 =
+     *  本轮不出征（原路气泡提示，等区块加载了再试）。 */
     private static BlockPos pickSite(ServerLevel level, BlockPos origin, int distance) {
         List<int[]> dirs = new ArrayList<>();
         Collections.addAll(dirs, new int[][]{{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}});
@@ -227,6 +230,9 @@ public final class AutoMineManager {
         for (int[] d : dirs) {
             int x = origin.m_123341_() + d[0] * distance;
             int z = origin.m_123343_() + d[1] * distance;
+            if (!level.m_46749_(new BlockPos(x, origin.m_123342_(), z))) {
+                continue; // 区块未加载 → 不传送过去（不为此强拉区块生成）
+            }
             BlockPos surface = surfaceAt(level, x, origin.m_123342_(), z);
             if (surface == null) {
                 continue;
