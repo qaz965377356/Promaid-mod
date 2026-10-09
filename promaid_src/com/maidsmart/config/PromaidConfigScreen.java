@@ -4375,6 +4375,8 @@ public class PromaidConfigScreen extends Screen {
                 v -> MaidSmartConfig.MISC_WORK_POS_MARKER.set(v), "潜行+鼠标中键方块 = 把身边在家/排班女仆的工位锚点标到那个方块（范围=排班活动半径）。与 TLM 自带的「河童的罗盘」写的是同一份排班锚点（谁后写谁生效）——手持罗盘时本功能自动让位给罗盘；关掉 = 中键完全交还原版取方块"));
         this.rows.add(new NumRow("气泡限频（毫秒）", String.valueOf(MaidSmartConfig.MISC_BUBBLE_LIMIT_MS.get()),
                 s -> setInt(MaidSmartConfig.MISC_BUBBLE_LIMIT_MS, s), "气泡限频（毫秒）：对话气泡的最短显示间隔，防连续说话刷屏"));
+        this.rows.add(new NumRow("女仆背包堆叠上限", String.valueOf(MaidSmartConfig.MAID_INV_STACK_LIMIT.get()),
+                s -> setInt(MaidSmartConfig.MAID_INV_STACK_LIMIT, s), "女仆背包堆叠上限（64~127，默认 64）：每个格子能堆多少——127 是 1.20.1 物品数量 byte 序列化的硬上限（超过会截断丢物品），故封顶；不可堆叠物品（工具/附魔书，上限 1）保持原样；只影响女仆背包格，不影响玩家背包与箱子。改动对新合入的堆生效，已超上限的旧堆不回收"));
     }
 
     private void utilityRows() {

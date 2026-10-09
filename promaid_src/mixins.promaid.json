@@ -73,7 +73,8 @@
     "MaidContainerRemoteOpenMixin",
     "ChunkMapTrackRemoteMixin",
     "ChunkMapRemotePumpMixin",
-    "MaidGoetyMoveSuppressMixin"
+    "MaidGoetyMoveSuppressMixin",
+    "MaidBackpackStackLimitMixin"
   ],
   "client": [
     "MaidTtsVolumeMixin",
