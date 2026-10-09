@@ -14,14 +14,15 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.CraftingRecipe;
 import net.minecraft.world.item.crafting.Ingredient;
+import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeHolder;
-import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.items.IItemHandler;
 import net.neoforged.neoforge.items.ItemHandlerHelper;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -29,8 +30,8 @@ import java.util.Map;
 import java.util.WeakHashMap;
 
 /**
- * 弹药自动补给——用枪的女仆没弹时，去**主人附近**的箱子取材料，按原版合成配方做出
- * **对得上这把枪口径**的弹药放进自己背包。
+ * 弹药自动补给——用枪的女仆没弹时，去**主人附近**的箱子取材料，按配方做出
+ * **对得上这把枪口径**的弹药放进自己背包；TACZ 配方还会**走到主人附近的枪械工作台旁**合成。
  *
  * <p>【需求（玩家原话）】「女仆支持在枪械没有子弹时，自动去箱子中获取 铜+火药，
  * 制作合适的子弹自己使用」。四条硬性要求，逐条落在哪：
@@ -39,7 +40,7 @@ import java.util.WeakHashMap;
  *       ATTACK_TARGET 记忆双口径）；一旦开打/被骑乘/坐下/枪离手，**悄悄放弃**
  *       （{@link #abortQuietly}——不说话不报错，材料留在她背包里，打完下次接着用）；</li>
  *   <li>【玩家附近具备条件】材料只在**主人身边** {@code combat.ammoCraftRadius}（默认 16 格）
- *       内的箱子/桶/潜影箱里找（{@link #containersNear}）；主人太远（>48 格）或不在场
+ *       内的箱子/桶/潜影箱里找；工作台也只在主人附近找；主人太远（>48 格）或不在场
  *       干脆不触发——她不会为了弹药满世界跑；</li>
  *   <li>【失败要说出来】每条失败通路都给一句气泡（没配方 / 缺哪些材料 / 箱子走不到 /
  *       背包放不下），见各 fail 调用点；</li>
@@ -52,22 +53,41 @@ import java.util.WeakHashMap;
  *
  * <p>【"合适的子弹"怎么判：探针法，零新增枪械 mod 内部 API】TACZ 的口径在 NBT、
  * 卓越前线每枪认一类弹——与其再深挖两家的内部接口，不如让**枪械 mod 自己验收**：
+ * 对每个候选配方，把 1 个**产物样本**插进她背包 → 问 {@link GunCompat#canFeed}
+ * {@code || canReload}（打得响或换得上弹吗，与模式门禁同一个或门）→ 再原样取回样本。
+ * 样本插进又取出，不消耗任何材料；或门翻真 = 口径对上了。
+ *
+ * <p>================ v1.3.x【配方从哪来：统一扫全量配方，TACZ 工作台优先】 ================
+ *
+ * <p>【玩家实测反馈】「没子弹后会触发逻辑，但是始终会报没有子弹的制作蓝图，无法制作，
+ * 但是实际上子弹是在家里的一个子弹制作台上制作的。」
+ *
+ * <p>【旧版错在哪】旧版只枚举 {@code RecipeType.CRAFTING}（原版合成台）。而
+ * **TACZ 的弹药不是原版合成台配方**——javap 实证（tacz-1.20.1-1.1.8-hotfix2；1.21.1
+ * 构建未直接实证，见下方反射段的降级说明）：
+ * {@code com.tacz.guns.crafting.GunSmithTableRecipe implements net.minecraft.world.item.crafting.Recipe}
+ * ——它就注册在**原版 RecipeManager 里、挂 TACZ 自家的 RecipeType**，材料是
+ * {@code getInputs()}（每个元素 = 原版 Ingredient + 个数 {@code getCount()}）、
+ * 产出是 {@code getOutput()}（弹药自带 AmmoId NBT）。旧版扫错了类型，所以永远
+ * "没有配方"。
+ *
+ * <p>【现在的口径】一次枚举 {@code RecipeManager.getRecipes()}（全部类型的全部配方），
+ * 两趟扫描：
  * <ol>
- *   <li>枚举原版合成台配方，粗筛"产物像弹药"的（注册名 path 含 ammo：tacz:ammo、
- *       tacz:ammo_box、superbwarfare 的 *_ammo 全覆盖）；</li>
- *   <li>对每个候选，把 1 个**产物样本**插进她背包 → 问 {@link GunCompat#canFeed}
- *       （这把枪现在打得响吗）→ 再原样取回样本。样本插进又取出，不消耗任何材料；
- *       canFeed 翻真 = 口径对上了（TACZ 弹药箱配方同样被这一步验收）；</li>
- *   <li>真正的合成在材料齐了之后：逐个 ingredient 从她背包抽 1 个 → 产出
- *       {@code getResultItem} 的拷贝插回背包。产物带着配方自带 NBT（TACZ 的 AmmoId
- *       就在里面），开火链路自己会去吃。</li>
+ *   <li>**TACZ 工作台配方优先**（装了 TACZ 才扫，反射句柄惰性解析、不在场即跳过）：
+ *       材料**带个数**（getCount），产出带口径 NBT；</li>
+ *   <li>退回原版合成台配方（每格材料 1 个，旧口径不变）。</li>
  * </ol>
- * 反射不可用 / 没装枪械 mod 时 canFeed 恒假 → 探针全否 → 气泡说"没有配方"，绝不误合成。
+ * 探针验收对两类配方一视同仁；反射不可用（没装 TACZ）时第一趟整体跳过，绝不误判。
+ *
+ * <p>【走到工作台旁合成】TACZ 配方命中后，若主人附近有枪械工作台
+ * （{@code GunSmithTableBlockEntity}，A/B/C 三档都算），她会**走过去、在台边合成**
+ * （对齐"子弹是在家里的制作台上做的"的直觉）；附近没有工作台就原地合成，材料流程不变。
+ * 工作台的**档位不做校验**（档位是 TACZ 工作台界面的进度门，这里只复用它的位置语义）。
  *
  * <p>【链路】挂 TLM 的 {@code MaidTickEvent}（两侧都发，{@link #tick} 第一行挡客户端），
  * 与 MaidFreeFlightHandler 同一挂载方式。状态机：RESOLVE（查配方）→ GOTO/TAKE
- * （逐箱取料，走过去 + 开箱盖动画 + 挥臂，范式照搬 BuildContainerFetchBehavior）→
- * CRAFT（合成入包）。全程不开箱子 UI、不碰末影箱（它不是 Container，天然翻不到）。
+ * （逐箱取料 / 走到工作台，范式照搬 BuildContainerFetchBehavior）→ CRAFT（合成入包）。
  *
  * <p>【为什么是 tick 服务而不是 brain 行为】触发条件与任务无关（idle/在家/跟随都可能
  * 手持空枪），而本模组加不进 TLM 自带任务的 brain——事件服务是本模组既有的跨任务
@@ -79,12 +99,60 @@ public final class AmmoResupplyManager {
     private AmmoResupplyManager() {
     }
 
+    /* ---------------- TACZ 工作台配方（javap 实证：tacz-1.20.1-1.1.8-hotfix2） ----------------
+     *
+     * GunSmithTableRecipe implements net.minecraft.world.item.crafting.Recipe<Inventory>——
+     * 配方本体注册在原版 RecipeManager（自家 RecipeType），所以从 RecipeManager 全量枚举
+     * 就能拿到，不需要碰 TACZ 的数据管理器。材料/产出的读取全部走它的公开方法：
+     *   getInputs()  → java.util.List<GunSmithTableIngredient>
+     *                  （getIngredient() → 原版 Ingredient；getCount() → int 个数）
+     *   getOutput()  → net.minecraft.world.item.ItemStack（弹药自带 AmmoId NBT）
+     * 工作台方块实体：com.tacz.guns.block.entity.GunSmithTableBlockEntity（A/B/C 三档共用）。
+     *
+     * 【1.21.1 说明】本侧的 javap 实证是在 1.20.1 jar 上做的（1.21.1 构建只发在
+     * CurseForge，本机拿不到 jar）；反射全部按"类名 + 方法名"解析——若 1.21.1 的
+     * 类名/方法名有变，解析失败即整段跳过（与"TACZ 不在场"同一条安全路径），
+     * 退回原版合成台配方，绝不误判"没配方"。
+     * TACZ 是可选兼容 mod（不在编译类路径），照 GunCompat 的老规矩走惰性反射。
+     */
+    /** [0]=GunSmithTableRecipe 类，[1]=getInputs()，[2]=getOutput()，
+     *  [3]=GunSmithTableIngredient.getIngredient()，[4]=getCount()，
+     *  [5]=GunSmithTableBlockEntity 类；空数组 = TACZ 不在场/解析失败 */
+    private static volatile Object[] TACZ_TABLE_API;
+    private static final Object TACZ_TABLE_LOCK = new Object();
+
+    private static Object[] taczTableApi() {
+        Object[] api = TACZ_TABLE_API;
+        if (api != null) {
+            return api;
+        }
+        synchronized (TACZ_TABLE_LOCK) {
+            if (TACZ_TABLE_API == null) {
+                try {
+                    Class<?> recipeCls = Class.forName("com.tacz.guns.crafting.GunSmithTableRecipe");
+                    Class<?> ingCls = Class.forName("com.tacz.guns.crafting.GunSmithTableIngredient");
+                    Class<?> beCls = Class.forName("com.tacz.guns.block.entity.GunSmithTableBlockEntity");
+                    TACZ_TABLE_API = new Object[]{
+                            recipeCls,
+                            recipeCls.getMethod("getInputs"),
+                            recipeCls.getMethod("getOutput"),
+                            ingCls.getMethod("getIngredient"),
+                            ingCls.getMethod("getCount"),
+                            beCls};
+                } catch (Throwable ignored) {
+                    TACZ_TABLE_API = new Object[0];
+                }
+            }
+            return TACZ_TABLE_API;
+        }
+    }
+
     /* ---------------- 节奏常量 ---------------- */
     /** 检测节流（tick）：缺弹判定本身有反射调用，不必每 tick 跑 */
     private static final long DETECT_INTERVAL = 10;
     /** 缺弹状态需持续稳定（tick）才发起——40 = 2 秒，防换弹瞬间抖动误触发 */
     private static final int STABLE_TICKS = 40;
-    /** 够得着箱子的距离平方（3 格，参照 BuildContainerFetchBehavior） */
+    /** 够得着箱子/工作台的距离平方（3 格，参照 BuildContainerFetchBehavior） */
     private static final double REACH_SQ = 9.0;
     /** 开箱盖动画到取物的等待（tick） */
     private static final int OPEN_WAIT_TICKS = 8;
@@ -98,7 +166,7 @@ public final class AmmoResupplyManager {
     private static final class Mat {
         final Ingredient ing;
         final Item rep;
-        /** 每组个数（collectMats 合并同类材料时会自增，故不 final） */
+        /** 每组个数（TACZ 配方材料自带个数；原版配方每格 1 个；合并同类材料时会自增） */
         int perBatch;
 
         Mat(Ingredient ing, Item rep, int perBatch) {
@@ -124,16 +192,22 @@ public final class AmmoResupplyManager {
     /** 一次补给尝试的进行时状态（maid → attempt；女仆释放即随 WeakHashMap 消失） */
     private static final class Attempt {
         Phase phase = Phase.GOTO;
-        /** 计划用的配方（探针验收过的那个） */
-        CraftingRecipe recipe;
-        /** 材料单（顺序无关，按代表物品合并） */
+        /** 材料单（TACZ 配方带个数；原版配方每格 1 个） */
         List<Mat> mats = new ArrayList<>();
+        /** 产出模板（弹药自带口径 NBT；每组合成用它 copy 一份） */
+        ItemStack outputTemplate;
+        /** 配方来源描述（日志用） */
+        String recipeDesc = "";
+        /** TACZ 配方 = true：合成阶段优先走到工作台旁 */
+        boolean atTable;
         /** 计划合成多少组 */
         int batches;
         /** 待取的箱子队列 */
         List<Fetch> queue = new ArrayList<>();
-        /** 当前目标箱 */
+        /** 当前目标（箱子或工作台） */
         BlockPos targetChest;
+        /** 当前目标是工作台（到位后直接合成，不走开箱取料） */
+        boolean targetIsTable;
         /** 开箱动画剩余 tick */
         int openTicks;
         /** 本趟走箱的截止 gameTime */
@@ -261,44 +335,74 @@ public final class AmmoResupplyManager {
         return false;
     }
 
-    /* ---------------- 阶段一：查配方（探针法） ---------------- */
+    /* ---------------- 阶段一：查配方（统一全量扫描，TACZ 工作台优先） ---------------- */
 
     private static void stepResolve(EntityMaid maid, ServerLevel level, Attempt a) {
-        CraftingRecipe found = null;
+        Collection<RecipeHolder<?>> all;
         try {
-            for (RecipeHolder<CraftingRecipe> rh : level.getRecipeManager()
-                    .getAllRecipesFor(RecipeType.CRAFTING)) {
-                CraftingRecipe r = rh.value();
-                ItemStack out;
+            all = level.getRecipeManager().getRecipes(); // 全部类型的全部配方
+        } catch (Throwable t) {
+            all = Collections.emptyList();
+        }
+        // 第一趟：TACZ 枪械工作台配方（装了才扫；没 TACZ 时 api 为空数组直接跳过）
+        Object[] tacz = taczTableApi();
+        if (tacz != null && tacz.length > 0) {
+            for (RecipeHolder<?> holder : all) {
+                Recipe<?> r = holder.value();
                 try {
-                    out = r.getResultItem(level.registryAccess());
+                    if (!((Class<?>) tacz[0]).isInstance(r)) {
+                        continue;
+                    }
+                    ItemStack out = (ItemStack) ((java.lang.reflect.Method) tacz[2]).invoke(r);
+                    if (out.isEmpty() || !ammoLike(out)) {
+                        continue;
+                    }
+                    if (!accepts(maid, maid.getMainHandItem(), out)) {
+                        continue; // 口径对不上（枪械 mod 自己验收）
+                    }
+                    List<Mat> mats = taczMats(((java.lang.reflect.Method) tacz[1]).invoke(r), tacz);
+                    if (mats.isEmpty()) {
+                        continue;
+                    }
+                    a.mats = mats;
+                    a.outputTemplate = out.copy();
+                    a.recipeDesc = "TACZ工作台:" + holder.id();
+                    a.atTable = true;
+                    planFetch(maid, level, a);
+                    return;
                 } catch (Throwable t) {
-                    continue; // 坏配方跳过，不拦别人
+                    continue; // 单个配方坏了不拦别人
                 }
+            }
+        }
+        // 第二趟：原版合成台配方（卓越前线等；每格材料 1 个）
+        for (RecipeHolder<?> holder : all) {
+            if (!(holder.value() instanceof CraftingRecipe cr)) {
+                continue;
+            }
+            try {
+                ItemStack out = cr.getResultItem(level.registryAccess());
                 if (out.isEmpty() || !ammoLike(out)) {
                     continue;
                 }
                 if (!accepts(maid, maid.getMainHandItem(), out)) {
-                    continue; // 口径对不上（枪械 mod 自己验收）
+                    continue;
                 }
-                found = r;
-                break;
+                List<Mat> mats = vanillaMats(cr);
+                if (mats.isEmpty()) {
+                    continue; // 退化配方（无任何材料）——绝不无中生有
+                }
+                a.mats = mats;
+                a.outputTemplate = out.copy();
+                a.recipeDesc = "原版合成:" + holder.id();
+                a.atTable = false;
+                planFetch(maid, level, a);
+                return;
+            } catch (Throwable t) {
+                continue;
             }
-        } catch (Throwable t) {
-            found = null;
         }
-        if (found == null) {
-            fail(maid, level, a, "这把枪的子弹我没有合成配方，做不出来，先省着点用哦～");
-            return;
-        }
-        a.recipe = found;
-        collectMats(a);
-        if (a.mats.isEmpty()) {
-            // 退化配方（无任何材料的合成不存在于正常数据包）——绝不无中生有
-            fail(maid, level, a, "这把枪的子弹我没有合成配方，做不出来，先省着点用哦～");
-            return;
-        }
-        planFetch(maid, level, a);
+        fail(maid, level, a, "这把枪的子弹我没有合成配方，做不出来，先省着点用哦～");
     }
 
     /** 产物像不像弹药：注册名 path 含 ammo（tacz:ammo / tacz:ammo_box / *_ammo 全覆盖） */
@@ -309,6 +413,60 @@ public final class AmmoResupplyManager {
         } catch (Throwable t) {
             return false;
         }
+    }
+
+    /** TACZ 配方材料单：getInputs() 的每个元素 = 原版 Ingredient + 个数 */
+    private static List<Mat> taczMats(Object inputs, Object[] api) {
+        List<Mat> mats = new ArrayList<>();
+        if (!(inputs instanceof List<?> list)) {
+            return mats;
+        }
+        Map<Item, Mat> byRep = new LinkedHashMap<>();
+        for (Object o : list) {
+            try {
+                Ingredient ing = (Ingredient) ((java.lang.reflect.Method) api[3]).invoke(o);
+                int count = (Integer) ((java.lang.reflect.Method) api[4]).invoke(o);
+                if (ing == null || ing.getItems().length == 0 || count <= 0) {
+                    continue;
+                }
+                ItemStack rep = ing.getItems()[0];
+                if (rep.isEmpty()) {
+                    continue;
+                }
+                Mat m = byRep.get(rep.getItem());
+                if (m == null) {
+                    m = new Mat(ing, rep.getItem(), count);
+                    byRep.put(rep.getItem(), m);
+                } else {
+                    m.perBatch += count;
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+        mats.addAll(byRep.values());
+        return mats;
+    }
+
+    /** 原版配方材料单：每个非空 ingredient 格 1 个，同代表物品合并计数 */
+    private static List<Mat> vanillaMats(CraftingRecipe cr) {
+        Map<Item, Mat> byRep = new LinkedHashMap<>();
+        for (Ingredient ing : cr.getIngredients()) {
+            if (ing == null || ing.getItems().length == 0) {
+                continue; // 有序配方的空槽（见 SmartCraftTool 同款注释）
+            }
+            ItemStack rep = ing.getItems()[0];
+            if (rep.isEmpty()) {
+                continue;
+            }
+            Mat m = byRep.get(rep.getItem());
+            if (m == null) {
+                m = new Mat(ing, rep.getItem(), 1);
+                byRep.put(rep.getItem(), m);
+            } else {
+                m.perBatch++;
+            }
+        }
+        return new ArrayList<>(byRep.values());
     }
 
     /**
@@ -352,30 +510,7 @@ public final class AmmoResupplyManager {
         }
     }
 
-    /** 配方 → 材料单（同代表物品合并计数；标签配方用 Ingredient 判据，不写死物品） */
-    private static void collectMats(Attempt a) {
-        Map<Item, Mat> byRep = new LinkedHashMap<>();
-        for (Ingredient ing : a.recipe.getIngredients()) {
-            if (ing == null || ing.getItems().length == 0) {
-                continue; // 有序配方的空槽（见 SmartCraftTool 同款注释）
-            }
-            ItemStack repStack = ing.getItems()[0];
-            if (repStack.isEmpty()) {
-                continue;
-            }
-            Item rep = repStack.getItem();
-            Mat m = byRep.get(rep);
-            if (m == null) {
-                m = new Mat(ing, rep, 1);
-                byRep.put(rep, m);
-            } else {
-                m.perBatch++;
-            }
-        }
-        a.mats = new ArrayList<>(byRep.values());
-    }
-
-    /* ---------------- 阶段二：计划取料 ---------------- */
+    /* ---------------- 阶段二：计划取料 / 工作台 ---------------- */
 
     private static void planFetch(EntityMaid maid, ServerLevel level, Attempt a) {
         if (!(maid.getOwner() instanceof ServerPlayer owner) || owner.level() != level) {
@@ -386,7 +521,7 @@ public final class AmmoResupplyManager {
         int cap = Math.max(1, com.maidsmart.config.MaidSmartConfig.AMMO_CRAFT_MAX_CRAFT.get());
         // 对每种材料：背包缺多少 → 主人附近哪个箱子存得最多（一个箱子解决就认它）
         int radius = Math.max(4, com.maidsmart.config.MaidSmartConfig.AMMO_CRAFT_RADIUS.get());
-        List<BlockEntity> containers = containersNear(level, owner.blockPosition(), radius);
+        List<BlockEntity> blockEntities = blockEntitiesNear(level, owner.blockPosition(), radius);
         for (Mat m : a.mats) {
             int need = m.perBatch * cap;
             int have = countInInv(inv, m);
@@ -395,7 +530,7 @@ public final class AmmoResupplyManager {
             }
             BlockEntity best = null;
             int bestN = 0;
-            for (BlockEntity be : containers) {
+            for (BlockEntity be : blockEntities) {
                 if (!(be instanceof Container c)) {
                     continue;
                 }
@@ -425,7 +560,39 @@ public final class AmmoResupplyManager {
             return;
         }
         a.batches = batches;
+        // TACZ 配方：主人附近有枪械工作台就走到台边合成（对齐"子弹是在家里的制作台上做的"）
+        if (a.atTable) {
+            BlockPos table = findSmithTable(level, owner.blockPosition(), radius);
+            if (table != null) {
+                a.targetChest = table;
+                a.targetIsTable = true;
+                a.phase = Phase.GOTO;
+                double d = maid.blockPosition().distSqr(table);
+                a.walkDeadline = level.getGameTime() + 200 + (long) (Math.sqrt(Math.max(0, d)) * 8);
+                BehaviorUtils.setWalkAndLookTargetMemories(maid, table, 0.7f, 2);
+                return;
+            }
+            // 附近没有工作台 → 原地合成（材料流程不变，见 startNextFetch 的空队分支）
+        }
         startNextFetch(maid, level, a);
+    }
+
+    /** 主人附近最近的枪械工作台方块实体（A/B/C 三档都认）；没有返回 null */
+    private static BlockPos findSmithTable(ServerLevel level, BlockPos center, int radius) {
+        Object[] api = taczTableApi();
+        if (api == null || api.length == 0) {
+            return null;
+        }
+        Class<?> beCls = (Class<?>) api[5];
+        for (BlockEntity be : blockEntitiesNear(level, center, radius)) {
+            try {
+                if (beCls.isInstance(be)) {
+                    return be.getBlockPos();
+                }
+            } catch (Throwable ignored) {
+            }
+        }
+        return null;
     }
 
     /** 缺料清单（名字 × 个数）：气泡文案用 */
@@ -446,6 +613,7 @@ public final class AmmoResupplyManager {
 
     private static void startNextFetch(EntityMaid maid, ServerLevel level, Attempt a) {
         a.targetChest = null;
+        a.targetIsTable = false;
         while (!a.queue.isEmpty() && level.getBlockEntity(a.queue.get(0).pos) == null) {
             a.queue.remove(0); // 箱子被拆了 → 跳过（短了多少合成前会再算）
         }
@@ -463,7 +631,7 @@ public final class AmmoResupplyManager {
         BehaviorUtils.setWalkAndLookTargetMemories(maid, f.pos, 0.7f, 2);
     }
 
-    /* ---------------- 阶段三：走箱 / 取料 ---------------- */
+    /* ---------------- 阶段三：走箱 / 走台 / 取料 ---------------- */
 
     private static void tickAttempt(EntityMaid maid, ServerLevel level, Attempt a) {
         // 【不在战斗中】贯穿全程：开打 / 被骑乘 / 坐下 / 枪离手 → 悄悄放弃（不说话，材料留在背包）
@@ -482,7 +650,13 @@ public final class AmmoResupplyManager {
     }
 
     private static void tickGoto(EntityMaid maid, ServerLevel level, Attempt a) {
-        if (a.targetChest == null || !(level.getBlockEntity(a.targetChest) instanceof Container)) {
+        if (a.targetChest == null || level.getBlockEntity(a.targetChest) == null) {
+            if (a.targetIsTable) {
+                // 工作台没了 → 原地合成（材料都在身上，不再找下一个台）
+                a.targetIsTable = false;
+                a.phase = Phase.CRAFT;
+                return;
+            }
             a.queue.remove(0);
             startNextFetch(maid, level, a);
             return;
@@ -490,7 +664,9 @@ public final class AmmoResupplyManager {
         double dSq = maid.blockPosition().distSqr(a.targetChest);
         if (dSq > REACH_SQ) {
             if (level.getGameTime() > a.walkDeadline) {
-                fail(maid, level, a, "装材料的箱子太远，我走不过去，子弹先补不成了～");
+                fail(maid, level, a, a.targetIsTable
+                        ? "材料都拿到了，但我走不到制作台，先在原地做啦～"
+                        : "装材料的箱子太远，我走不过去，子弹先补不成了～");
                 return;
             }
             // 还在路上：走位目标丢了就补一次（TLM 的移动 sink 每 tick 会消费它）
@@ -499,7 +675,13 @@ public final class AmmoResupplyManager {
             }
             return;
         }
-        // 到位：开箱盖，等几 tick 再取（"走过去 → 开箱 → 取 → 关箱"，同 BuildContainerFetchBehavior）
+        if (a.targetIsTable) {
+            // 到台：挥一下手（"在制作台前操作"），直接合成——工作台没有箱盖动画
+            maid.swing(net.minecraft.world.InteractionHand.MAIN_HAND);
+            a.phase = Phase.CRAFT;
+            return;
+        }
+        // 到箱：开箱盖，等几 tick 再取（"走过去 → 开箱 → 取 → 关箱"，同 BuildContainerFetchBehavior）
         level.blockEvent(a.targetChest, level.getBlockState(a.targetChest).getBlock(), 1, 1);
         a.openTicks = OPEN_WAIT_TICKS;
         a.phase = Phase.TAKE;
@@ -544,6 +726,10 @@ public final class AmmoResupplyManager {
     /* ---------------- 阶段四：合成 ---------------- */
 
     private static void stepCraft(EntityMaid maid, ServerLevel level, Attempt a) {
+        if (a.outputTemplate == null || a.outputTemplate.isEmpty()) {
+            fail(maid, level, a, "这把枪的子弹我没有合成配方，做不出来，先省着点用哦～");
+            return;
+        }
         IItemHandler inv = maid.getAvailableBackpackInv();
         // 取料途中箱子可能被搬空 → 按她背包**实际**持有量重算组数
         int batches = a.batches;
@@ -556,31 +742,33 @@ public final class AmmoResupplyManager {
         }
         int made = 0;
         for (int b = 0; b < batches; b++) {
-            ItemStack sample = recipeResult(level, a.recipe);
-            if (sample.isEmpty() || !canInsert(inv, sample)) {
+            // 先确认产物放得下（模拟插入，不消耗任何东西）
+            if (!canInsert(inv, a.outputTemplate)) {
                 break; // 背包放不下产物 → 停在这里，材料一个没动
             }
+            // 按材料单抽料（每种 perBatch 个；中途不够就全数还回，物品守恒）
             List<ItemStack> taken = new ArrayList<>();
             boolean ok = true;
-            for (Ingredient ing : a.recipe.getIngredients()) {
-                if (ing == null || ing.getItems().length == 0) {
-                    continue;
+            for (Mat m : a.mats) {
+                for (int k = 0; k < m.perBatch && ok; k++) {
+                    int slot = findSlot(inv, m.ing);
+                    if (slot < 0) {
+                        ok = false;
+                        break;
+                    }
+                    taken.add(inv.extractItem(slot, 1, false));
                 }
-                int slot = findSlot(inv, ing);
-                if (slot < 0) {
-                    ok = false;
+                if (!ok) {
                     break;
                 }
-                taken.add(inv.extractItem(slot, 1, false));
             }
             if (!ok) {
-                // 抽取中断（背包被人动了）：已抽的还回去，物品守恒
                 for (ItemStack s : taken) {
                     ItemHandlerHelper.insertItemStacked(inv, s, false);
                 }
                 break;
             }
-            ItemStack out = recipeResult(level, a.recipe).copy();
+            ItemStack out = a.outputTemplate.copy();
             ItemStack remain = ItemHandlerHelper.insertItemStacked(inv, out, false);
             if (!remain.isEmpty()) {
                 // 理论到不了（上面模拟过放得下）；最后一道保险：逐槽硬塞
@@ -608,17 +796,9 @@ public final class AmmoResupplyManager {
         }
         com.maidsmart.tool.PromaidLog.log("弹药补给",
                 com.maidsmart.tool.PromaidLog.nameOf(maid) + " 合成了 " + made + " 组弹药"
-                        + "（配方 " + a.recipe + "，补给后打得响=" + feed + "）");
+                        + "（配方 " + a.recipeDesc + "，补给后打得响=" + feed + "）");
         say(maid, "子弹补给完成，做了 " + made + " 组，这下能打响啦～");
         finish(maid, level);
-    }
-
-    private static ItemStack recipeResult(ServerLevel level, CraftingRecipe r) {
-        try {
-            return r.getResultItem(level.registryAccess());
-        } catch (Throwable t) {
-            return ItemStack.EMPTY;
-        }
     }
 
     /** 模拟插入：产物整堆放不放得下（不改动任何槽位） */
@@ -663,8 +843,8 @@ public final class AmmoResupplyManager {
         return n;
     }
 
-    /** 主人附近的方块实体（按区块枚举，同 BuildContainerSource.blockEntitiesIn 的口径） */
-    private static List<BlockEntity> containersNear(ServerLevel level, BlockPos center, int radius) {
+    /** 中心附近的方块实体（按区块枚举，同 BuildContainerSource.blockEntitiesIn 的口径） */
+    private static List<BlockEntity> blockEntitiesNear(ServerLevel level, BlockPos center, int radius) {
         List<BlockEntity> out = new ArrayList<>();
         int[] box = {center.getX() - radius, center.getY() - radius, center.getZ() - radius,
                 center.getX() + radius, center.getY() + radius, center.getZ() + radius};
