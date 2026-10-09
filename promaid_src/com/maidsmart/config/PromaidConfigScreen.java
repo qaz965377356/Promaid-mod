@@ -1110,21 +1110,56 @@ public class PromaidConfigScreen extends Screen {
         this.bottomButtons(w, h, cx);
     }
 
-    /** v1.3.x：女仆拾取名单子页——「不拾取」「拾取即销毁」两份名单共用一个页面（顶部按钮切换） */
+    /** v1.3.x：女仆拾取名单子页——「不拾取」「拾取即销毁」两份名单共用一个页面：
+     *  名单切换按钮 + 搜索网格（点击图标加入/移出，中英文搜索）+ 手动输入（通配符用）+ 当前名单列表 */
     private void pickupTableButtons(int w, int h, int cx) {
         int panelLeft = Math.max(8, cx - 280);
         int panelWidth = Math.min(560, w - 16);
         int left = panelLeft + 10;
         boolean destroy = this.pickupTableMode == 1;
-        this.m_142416_(Button.m_253074_(Component.m_237113_(
-                        "\u00a7f当前名单：\u00a7" + (destroy ? "c拾取即销毁" : "e不拾取") + "\u00a77（点击切换）"),
-                b -> {
-                    this.pickupTableMode = destroy ? 0 : 1;
-                    this.m_7856_();
-                }).m_252987_(left, 46, panelWidth - 20, 18).m_253136_());
-        int inputY = 70;
+        // 名单切换（两个小按钮，同矿表样式）
+        String[] modeNames = {"不拾取", "拾取即销毁"};
+        for (int i = 0; i < modeNames.length; i++) {
+            final int mi = i;
+            this.m_142416_(Button.m_253074_(
+                            Component.m_237113_((this.pickupTableMode == mi ? "\u00a7e\u25cf " : "\u00a77") + modeNames[i]),
+                            b -> {
+                                this.pickupTableMode = mi;
+                                this.m_7856_();
+                            })
+                    .m_252987_(left + i * 100, 24, 96, 18).m_253136_());
+        }
+        // 搜索框（共享 creativeInput 字段，子页互斥安全）
+        this.creativeInput = new EditBox(this.f_96547_, left, 46, panelWidth - 20, 18,
+                Component.m_237113_("搜索物品（中英文皆可，如：圆石 / cobblestone）"));
+        this.creativeInput.m_94199_(64);
+        this.creativeInput.m_94144_(this.creativeQuery == null ? "" : this.creativeQuery);
+        this.creativeInput.m_94151_(s -> {
+            this.creativeQuery = s;
+            this.rebuildPickupCreative();
+        });
+        this.m_142416_(this.creativeInput);
+        int gridRowsNow = h < 215 ? 2 : GRID_ROWS;
+        this.gridRows = gridRowsNow;
+        this.rebuildPickupCreative();
+        int gridBottom = GRID_TOP + gridRowsNow * GRID_CELL;
+        int pageY = gridBottom + 2;
+        if (this.creativePage > 0) {
+            this.m_142416_(Button.m_253074_(Component.m_237113_("\u00a77\u25c0"), b -> {
+                this.creativePage--;
+                this.m_7856_();
+            }).m_252987_(cx - 40, pageY, 20, 16).m_253136_());
+        }
+        if (this.creativePage < this.creativePages() - 1) {
+            this.m_142416_(Button.m_253074_(Component.m_237113_("\u00a77\u25b6"), b -> {
+                this.creativePage++;
+                this.m_7856_();
+            }).m_252987_(cx + 20, pageY, 20, 16).m_253136_());
+        }
+        // 手动输入（命名空间通配 tacz:* 这类网格表示不了的条目走这里）
+        int inputY = gridBottom + 24;
         this.pickupInput = new EditBox(this.f_96547_, left, inputY, panelWidth - 116, 18,
-                Component.m_237113_("填物品注册名加进当前名单"));
+                Component.m_237113_("填注册名加进当前名单（支持 tacz:* 通配）"));
         this.pickupInput.m_94199_(64);
         this.pickupInput.m_257771_(Component.m_237113_("minecraft:cobblestone 或 tacz:*"));
         this.m_142416_(this.pickupInput);
@@ -1155,6 +1190,48 @@ public class PromaidConfigScreen extends Screen {
         } else {
             MaidSmartConfig.MISC_PICKUP_BLACKLIST.set(list);
         }
+    }
+
+    /** 全物品缓存（id + 中文名）：拾取网格用（全部注册物品，无筛选，建一次） */
+    private static java.util.List<String[]> pickupCache = null;
+
+    private static void ensurePickupCache() {
+        if (pickupCache != null) {
+            return;
+        }
+        pickupCache = new ArrayList<>();
+        for (net.minecraft.world.item.Item item : net.minecraftforge.registries.ForgeRegistries.ITEMS) {
+            net.minecraft.resources.ResourceLocation key =
+                    net.minecraftforge.registries.ForgeRegistries.ITEMS.getKey(item);
+            if (key == null) {
+                continue;
+            }
+            String id = key.toString();
+            String cn = com.maidsmart.build.BlueprintLib.cnName(id);
+            pickupCache.add(new String[]{id, cn == null ? "" : cn});
+        }
+        pickupCache.sort((a, b) -> a[0].compareTo(b[0]));
+    }
+
+    /** 重建拾取网格（搜索过滤 id/中文名；同 rebuildWaterCreative 口径） */
+    private void rebuildPickupCreative() {
+        this.creativeItems.clear();
+        ensurePickupCache();
+        String q = this.creativeQuery == null ? "" : this.creativeQuery.trim().toLowerCase(java.util.Locale.ROOT);
+        for (String[] e : pickupCache) {
+            if (!q.isEmpty() && !(e[0].contains(q) || e[1].contains(q))) {
+                continue;
+            }
+            try {
+                net.minecraft.world.item.Item item = net.minecraftforge.registries.ForgeRegistries.ITEMS
+                        .getValue(new net.minecraft.resources.ResourceLocation(e[0]));
+                if (item != null) {
+                    this.creativeItems.add(new net.minecraft.world.item.ItemStack(item));
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        this.creativePage = Math.min(this.creativePage, Math.max(0, this.creativePages() - 1));
     }
 
     /** 手动输入 id/通配加进当前名单（省略命名空间补 minecraft:；tacz:* 这类命名空间通配合法） */
@@ -1203,6 +1280,111 @@ public class PromaidConfigScreen extends Screen {
         if (this.pickupList != null) {
             this.pickupList.rebuild();
         }
+    }
+
+    /** 当前名单是否含该 id（面板口径：只认完整注册 id） */
+    private boolean pickupHas(String id) {
+        return pickupCurrentList().contains(id);
+    }
+
+    /** 网格点击切换：在 → 移出；不在 → 加入（完整注册 id） */
+    private void pickupToggle(String id) {
+        java.util.List<String> list = new java.util.ArrayList<>(pickupCurrentList());
+        if (!list.remove(id)) {
+            list.add(id);
+        }
+        pickupSetList(list);
+        if (this.pickupList != null) {
+            this.pickupList.rebuild();
+        }
+    }
+
+    /** 渲染拾取网格（同超越维度规则网格：绿框+勾 = 已在当前名单；右侧悬停名/页码） */
+    private void renderPickupGrid(net.minecraft.client.gui.GuiGraphics g, int mouseX, int mouseY,
+                                  int w, int h, int cx) {
+        boolean destroy = this.pickupTableMode == 1;
+        String title = "\u00a7e女仆拾取名单——" + (destroy ? "\u00a7c拾取即销毁" : "\u00a7e不拾取")
+                + "\u00a77——点击物品图标加入/移出（再点取消）";
+        g.m_280653_(this.f_96547_, Component.m_237113_(title), cx, 10, 0xFFFFFF);
+        int panelLeft = Math.max(8, cx - 280);
+        int panelWidth = Math.min(560, w - 16);
+        int left = panelLeft + 10;
+        int gridTop = GRID_TOP;
+        int gridRowsNow = h < 215 ? 2 : GRID_ROWS;
+        int gridBottom = gridTop + gridRowsNow * GRID_CELL;
+        g.m_280509_(panelLeft + 8, gridTop - 4, panelLeft + panelWidth - 8, gridBottom, 0x80101010);
+        int perPage = GRID_COLS * this.gridRows;
+        int start = this.creativePage * perPage;
+        int end = Math.min(this.creativeItems.size(), start + perPage);
+        int hoverIdx = -1;
+        for (int i = start; i < end; i++) {
+            int col = (i - start) % GRID_COLS;
+            int row = (i - start) / GRID_COLS;
+            int x = left + col * GRID_CELL;
+            int y = gridTop + row * GRID_CELL;
+            net.minecraft.world.item.ItemStack stack = this.creativeItems.get(i);
+            net.minecraft.resources.ResourceLocation key =
+                    net.minecraftforge.registries.ForgeRegistries.ITEMS.getKey(stack.m_41720_());
+            String id = key == null ? "" : key.toString();
+            if (!id.isEmpty() && pickupHas(id)) {
+                g.m_280509_(x - 1, y - 1, x + 17, y + 17, 0x8022CC22); // 绿框 = 已在当前名单
+                g.m_280653_(this.f_96547_, Component.m_237113_("\u2714"), x + 12, y + 12, 0xFFFFFF);
+            }
+            g.m_280480_(stack, x, y); // 物品图标
+            if (mouseX >= x && mouseX < x + GRID_CELL && mouseY >= y && mouseY < y + GRID_CELL) {
+                hoverIdx = i;
+            }
+        }
+        int infoX = left + GRID_COLS * GRID_CELL + 12;
+        int infoY = gridTop + 2;
+        if (hoverIdx >= 0 && hoverIdx < this.creativeItems.size()) {
+            net.minecraft.world.item.ItemStack stack = this.creativeItems.get(hoverIdx);
+            net.minecraft.resources.ResourceLocation key =
+                    net.minecraftforge.registries.ForgeRegistries.ITEMS.getKey(stack.m_41720_());
+            String hover = key == null ? "?" : key.toString();
+            String hc = com.maidsmart.build.BlueprintLib.cnName(hover);
+            g.m_280614_(this.f_96547_,
+                    Component.m_237113_("\u00a7f" + (hc.equals(hover) ? hover : hc)),
+                    infoX, infoY, 0xFFFFFF, false);
+            g.m_280614_(this.f_96547_, Component.m_237113_("\u00a77" + hover),
+                    infoX, infoY + 10, 0xAAAAAA, false);
+        } else {
+            int pages = this.creativePages();
+            if (pages > 1) {
+                g.m_280614_(this.f_96547_,
+                        Component.m_237113_("第 " + (this.creativePage + 1) + "/" + pages + " 页"),
+                        infoX, infoY, 0x888888, false);
+            }
+        }
+    }
+
+    /** 网格点击：在当前名单里加入/移出该物品。命中返回 true（未命中落到 super，同 cookGrid 的教训）。 */
+    private boolean clickPickupGrid(double mouseX, double mouseY) {
+        int cx = this.f_96543_ / 2;
+        int panelLeft = Math.max(8, cx - 280);
+        int left = panelLeft + 10;
+        int gridTop = GRID_TOP;
+        int gridRowsNow = this.f_96544_ < 215 ? 2 : GRID_ROWS;
+        int gridBottom = gridTop + gridRowsNow * GRID_CELL;
+        if (mouseX < left || mouseX >= left + GRID_COLS * GRID_CELL
+                || mouseY < gridTop || mouseY >= gridBottom) {
+            return false;
+        }
+        int perPage = GRID_COLS * this.gridRows;
+        int start = this.creativePage * perPage;
+        int col = (int) ((mouseX - left) / GRID_CELL);
+        int row = (int) ((mouseY - gridTop) / GRID_CELL);
+        int idx = start + row * GRID_COLS + col;
+        if (idx < 0 || idx >= this.creativeItems.size()) {
+            return false;
+        }
+        net.minecraft.resources.ResourceLocation key = net.minecraftforge.registries.ForgeRegistries.ITEMS
+                .getKey(this.creativeItems.get(idx).m_41720_());
+        if (key == null) {
+            return false;
+        }
+        pickupToggle(key.toString());
+        return true;
     }
 
     /**
@@ -6739,6 +6921,8 @@ public class PromaidConfigScreen extends Screen {
             this.renderCookGrid(g, mouseX, mouseY, w, h, cx);
         } else if (this.bdRules) {
             this.renderBdRulesGrid(g, mouseX, mouseY, w, h, cx);
+        } else if (this.pickupTable) {
+            this.renderPickupGrid(g, mouseX, mouseY, w, h, cx);
         } else {
             // v1.1.0 实测二十四修复：标签 x 从硬编码 20 改为 panelLeft+10——
             // 旧版标签固定 x=20，面板和控件居中（panelLeft=Math.max(8,cx-280)），
@@ -6990,6 +7174,10 @@ public class PromaidConfigScreen extends Screen {
         }
         // 实测七百七十二：超越维度规则名单子页网格点击 → 在当前模式下加入/移出该物品
         if (this.bdRules && button == 0 && this.clickBdRuleGrid(mouseX, mouseY)) {
+            return true;
+        }
+        // v1.3.x：女仆拾取名单子页网格点击 → 在当前名单里加入/移出（命中才吃掉，未命中落到 super）
+        if (this.pickupTable && button == 0 && this.clickPickupGrid(mouseX, mouseY)) {
             return true;
         }
         return super.m_6375_(mouseX, mouseY, button);
