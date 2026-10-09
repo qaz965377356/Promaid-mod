@@ -60,6 +60,7 @@ public final class GuideContent {
                 GuideChaptersWork.cookGuide(),
                 GuideChaptersWork.farmMiscGuide(),
                 GuideChaptersWork.scheduleGuide(),
+                GuideChaptersWork.craftOrderGuide(),
                 GuideChaptersCombat.combatGuide(),
                 GuideChaptersFlight.flightGuide(),
                 GuideChaptersFlight.passiveGuide(),

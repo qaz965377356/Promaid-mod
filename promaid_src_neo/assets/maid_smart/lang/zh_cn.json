@@ -408,5 +408,17 @@
   "config.promaid.ride.bombStandoff": "投弹安全高度（比目标高几格）",
   "config.promaid.ride.airAltMigrated": "内部·悬停高度迁移标记",
   "config.promaid.ride.orbitRadiusMigrated": "内部·盘旋半径迁移标记",
-  "config.promaid.misc.bdStorage": "超越维度存储联动"
+  "config.promaid.misc.bdStorage": "超越维度存储联动",
+  "item.maid_smart.craft_order": "委托单",
+  "config.promaid.craftOrder": "委托合成设置",
+  "config.promaid.craftOrder.enable": "委托合成",
+  "config.promaid.craftOrder.scanRadius": "主人附近找箱半径（格）",
+  "config.promaid.craftOrder.selfRadius": "女仆附近找箱半径（格）",
+  "config.promaid.craftOrder.maxDepth": "配方展开深度",
+  "config.promaid.craftOrder.allowGather": "缺料传送采集",
+  "config.promaid.craftOrder.gatherTimeoutSec": "采集限时（秒）",
+  "config.promaid.craftOrder.maxCount": "单次委托数量上限",
+  "config.promaid.craftOrder.craftInterval": "合成节拍（tick）",
+  "task.maid_smart.craft": "委托合成",
+  "task.maid_smart.craft.desc": "委托合成：右键「委托单」选目标物品与数量——她按配方树取料/合成指定数量后传送到你身边交付；缺料且属于简单可采场景（原木/石料/常见矿）时会自己找点、传送过去采够再回来；缺不可采材料会挂起等你补料，补上自动继续"
 }

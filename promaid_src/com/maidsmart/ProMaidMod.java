@@ -59,6 +59,11 @@ public class ProMaidMod {
     public static final RegistryObject<Item> PATROL_CHART = ITEMS.register("patrol_chart",
             () -> new com.maidsmart.patrol.PatrolChartItem(new Item.Properties()));
 
+    /** 委托单（委托合成 v1）：右键打开委托界面——选目标物品与数量，女仆按配方树取料/合成
+     *  指定数量后传送到主人身边交付（见 com.maidsmart.craft.CraftOrderManager） */
+    public static final RegistryObject<Item> CRAFT_ORDER = ITEMS.register("craft_order",
+            () -> new com.maidsmart.craft.CraftOrderItem(new Item.Properties()));
+
     /** v1.2.2 实测五百六十一：官方注册的那个 ModConfig（配置事件里记下来；只读引用，事件里不写盘） */
     public static net.minecraftforge.fml.config.ModConfig COMMON_CONFIG;
 
@@ -106,6 +111,11 @@ public class ProMaidMod {
         com.maidsmart.patrol.PatrolNetworking.register();
         net.minecraftforge.common.MinecraftForge.EVENT_BUS.register(
                 new com.maidsmart.patrol.PatrolChartKit());
+        // 委托单（委托合成 v1）：网络层（S2C 开屏 + 界面数据；SimpleChannel 通道 maid_smart:craft_order）
+        com.maidsmart.craft.CraftOrderNetworking.register();
+        // 委托合成 v1：服务端调度器（接单/取料/采集/合成/交付；MaidTickEvent 驱动）
+        net.minecraftforge.common.MinecraftForge.EVENT_BUS.register(
+                new com.maidsmart.craft.CraftOrderManager.Hook());
         // v1.1.0：排班表网络层 + 调度器（按游戏内时间自动切工作模式/任务）
         com.maidsmart.schedule.ScheduleNetworking.register();
         com.maidsmart.schedule.ScheduleManager.register();

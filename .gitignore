@@ -183,3 +183,9 @@ Desktop.ini
 
 # ---- mac 本地构建环境（安装器产出的 libraries，勿提交）----
 /buildenv/
+
+# ---- WorkBuddy 工具目录（项目记忆等，勿提交）----
+.workbuddy/
+
+# ---- macOS 垃圾文件 ----
+.DS_Store

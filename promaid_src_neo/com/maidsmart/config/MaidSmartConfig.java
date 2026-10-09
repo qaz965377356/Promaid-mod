@@ -309,6 +309,23 @@ public static final ModConfigSpec.IntValue BUILD_CHEST_FETCH_COOLDOWN;
     public static final ModConfigSpec.BooleanValue AMMO_EMERGENCY_ENABLED;
     /** 应急创造间隔（秒）：战斗中两次应急创造的最短间隔 */
     public static final ModConfigSpec.IntValue AMMO_EMERGENCY_INTERVAL;
+    // 委托合成（v1）：委托单 → 按配方树取料/合成 → 传送回主人身边交付
+    /** 委托合成总开关 */
+    public static final ModConfigSpec.BooleanValue CRAFT_ORDER_ENABLE;
+    /** 主人附近找箱半径（格）：只翻主人身边这个范围内的箱子/桶/潜影箱 */
+    public static final ModConfigSpec.IntValue CRAFT_ORDER_SCAN_RADIUS;
+    /** 女仆自身附近找箱半径（格）：她自己站位（工作点）附近的箱子也算库存 */
+    public static final ModConfigSpec.IntValue CRAFT_ORDER_SELF_RADIUS;
+    /** 配方展开深度上限（层）：把目标物品逐级拆到基础材料的层数 */
+    public static final ModConfigSpec.IntValue CRAFT_ORDER_MAX_DEPTH;
+    /** 缺料传送采集（默认开）：缺失材料属于简单可采场景时，传送过去采够再回来 */
+    public static final ModConfigSpec.BooleanValue CRAFT_ORDER_ALLOW_GATHER;
+    /** 采集限时（秒）：单次外出采集的最长时间，超时回城如实报告 */
+    public static final ModConfigSpec.IntValue CRAFT_ORDER_GATHER_TIMEOUT;
+    /** 单次委托数量上限 */
+    public static final ModConfigSpec.IntValue CRAFT_ORDER_MAX_COUNT;
+    /** 合成节拍（tick/次）：两个合成动作之间的间隔 */
+    public static final ModConfigSpec.IntValue CRAFT_ORDER_CRAFT_INTERVAL;
     // v1.1.0：主动切换战斗模式（主人受攻击 → 附近女仆立即切战斗，威胁消失还原）
     public static final ModConfigSpec.BooleanValue COMBAT_AUTO_SWITCH;
     public static final ModConfigSpec.IntValue COMBAT_AUTO_SWITCH_RADIUS;
@@ -1726,6 +1743,26 @@ public static final ModConfigSpec.BooleanValue MISC_DIMENSION_FOLLOW;
                 .translation("config.promaid.wood.stuckWatchdog").define("stuckWatchdog", true);
         WOOD_STUCK_RESET_SECONDS = BUILDER.comment("看门狗判定时长（秒，默认 8）：连续这么久既没砍掉/垫过方块、也没挪动就整体重置状态。重置不会打断「够不着目标」的超时弃置流程（等待时钟跨重置保留）")
                 .translation("config.promaid.wood.stuckResetSeconds").defineInRange("stuckResetSeconds", 8, 3, 300);
+        BUILDER.pop();
+
+        // ---- 委托合成（委托合成 v1）----
+        BUILDER.comment("委托合成设置").translation("config.promaid.craftOrder").push("craftOrder");
+        CRAFT_ORDER_ENABLE = BUILDER.comment("委托合成（默认开）：手持「委托单」右键打开界面，选目标物品与数量交给附近女仆——她按配方树取料/合成指定数量，完成后传送到你身边交付；缺料且属于可采集场景时会传送过去采集再回来。全部执行都有气泡说明（缺什么/去采什么/做好了），物品守恒不凭空生成")
+                .translation("config.promaid.craftOrder.enable").define("enable", true);
+        CRAFT_ORDER_SCAN_RADIUS = BUILDER.comment("主人附近找箱半径（格，默认 16）：只翻主人身边这个范围内的箱子/桶/潜影箱")
+                .translation("config.promaid.craftOrder.scanRadius").defineInRange("scanRadius", 16, 4, 64);
+        CRAFT_ORDER_SELF_RADIUS = BUILDER.comment("女仆附近找箱半径（格，默认 16）：她自己站位（工作点）附近的箱子也算库存")
+                .translation("config.promaid.craftOrder.selfRadius").defineInRange("selfRadius", 16, 4, 64);
+        CRAFT_ORDER_MAX_DEPTH = BUILDER.comment("配方展开深度（默认 3）：把目标物品逐级拆到基础材料的层数——3 层够展开火把/工具这类常规链；调大可以拆更深的配方（如需要先做中间件），但计划会更大")
+                .translation("config.promaid.craftOrder.maxDepth").defineInRange("maxDepth", 3, 1, 6);
+        CRAFT_ORDER_ALLOW_GATHER = BUILDER.comment("缺料传送采集（默认开）：缺失材料属于简单可采场景（原木/石料/常见矿）时，她自己找资源点、传送过去采够、再传送回来继续合成；关掉则缺料只报告")
+                .translation("config.promaid.craftOrder.allowGather").define("allowGather", true);
+        CRAFT_ORDER_GATHER_TIMEOUT = BUILDER.comment("采集限时（秒，默认 300）：单次外出采集的最长时间，超时回城并如实报告还缺多少")
+                .translation("config.promaid.craftOrder.gatherTimeoutSec").defineInRange("gatherTimeoutSec", 300, 30, 1800);
+        CRAFT_ORDER_MAX_COUNT = BUILDER.comment("单次委托数量上限（默认 512）：一张委托单最多做多少个")
+                .translation("config.promaid.craftOrder.maxCount").defineInRange("maxCount", 512, 1, 4096);
+        CRAFT_ORDER_CRAFT_INTERVAL = BUILDER.comment("合成节拍（tick/次，默认 10）：每两个合成动作之间的间隔（照原版合成表口径逐次合成，不做瞬间批量）")
+                .translation("config.promaid.craftOrder.craftInterval").defineInRange("craftInterval", 10, 2, 40);
         BUILDER.pop();
 
         // ---- AI 记忆 ----

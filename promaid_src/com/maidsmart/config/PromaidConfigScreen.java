@@ -441,7 +441,9 @@ public class PromaidConfigScreen extends Screen {
         VOICE("语音与 TTS", Group.UI), HUD("显示与提示", Group.UI),
         UTILITY("交互与杂项", Group.SYSTEM), LOG("运行日志", Group.SYSTEM),
         // v1.2.2 实测六百一十六：压缩盒（新道具/新方块）——自己的两条参数，挂在系统与杂项下
-        COMPRESSION_BOX("压缩盒", Group.SYSTEM);
+        COMPRESSION_BOX("压缩盒", Group.SYSTEM),
+        // 委托合成 v1：委托单（新道具）——她真的要干活，挂在「生产与工作」组（顺序 = 本枚举声明顺序）
+        CRAFT_ORDER("委托合成", Group.WORK);
         final String title;
         final Group group;
 
@@ -761,6 +763,7 @@ public class PromaidConfigScreen extends Screen {
             case UTILITY -> this.utilityRows();
             case LOG -> this.logRows();
             case COMPRESSION_BOX -> this.compressionBoxRows();
+            case CRAFT_ORDER -> this.craftOrderRows();
         }
         // v1.1.0 实测二十二：perPage 按动态行高累加计算——每行高度 = rowHeight(def)
         // （注释折行多则高、SectionRow 紧凑），从 CONTENT_TOP 起逐行累加、超出
@@ -4841,6 +4844,27 @@ public class PromaidConfigScreen extends Screen {
                         + "②六十百一十八 之前报的「附魔类物品存进去会消失」正出在这一类上（盒子的自定义数量与原版堆叠上限 1 对不上，"
                         + "多出来的那份被当返回值丢掉），把开关关掉等于把这些坑重新打开。"
                         + "老配置文件里残留的 refuseEnchanted / refuseList 两行不再被读取（不影响启动）"));
+    }
+
+    /** 委托合成 v1：委托单（生产与工作 → 委托合成） */
+    private void craftOrderRows() {
+        this.rows.add(new SectionRow("委托合成：右键「委托单」选目标物品与数量，女仆取料/合成后送回你身边", true));
+        this.rows.add(new BoolRow("委托合成", MaidSmartConfig.CRAFT_ORDER_ENABLE.get(),
+                v -> MaidSmartConfig.CRAFT_ORDER_ENABLE.set(v), "委托合成（默认开）：手持「委托单」右键打开界面，选目标物品与数量交给附近女仆——她按配方树取料/合成指定数量，完成后传送到你身边交付；缺料且属于可采集场景时会传送过去采集再回来。全部执行都有气泡说明（缺什么/去采什么/做好了），物品守恒不凭空生成"));
+        this.rows.add(new NumRow("主人附近找箱半径（格）", String.valueOf(MaidSmartConfig.CRAFT_ORDER_SCAN_RADIUS.get()),
+                s -> setInt(MaidSmartConfig.CRAFT_ORDER_SCAN_RADIUS, s), "主人附近找箱半径（格，默认 16）：只翻主人身边这个范围内的箱子/桶/潜影箱，她不会为材料满世界跑"));
+        this.rows.add(new NumRow("女仆附近找箱半径（格）", String.valueOf(MaidSmartConfig.CRAFT_ORDER_SELF_RADIUS.get()),
+                s -> setInt(MaidSmartConfig.CRAFT_ORDER_SELF_RADIUS, s), "女仆附近找箱半径（格，默认 16）：她自己站位（工作点）附近的箱子也算库存——主人在家、她在外干活时这个范围更管用"));
+        this.rows.add(new NumRow("配方展开深度", String.valueOf(MaidSmartConfig.CRAFT_ORDER_MAX_DEPTH.get()),
+                s -> setInt(MaidSmartConfig.CRAFT_ORDER_MAX_DEPTH, s), "配方展开深度（默认 3，1~6）：把目标物品逐级拆到基础材料的层数——3 层够展开火把/工具这类常规链；调大能拆更深的配方（需要先做中间件的），但计划会更大"));
+        this.rows.add(new BoolRow("缺料传送采集", MaidSmartConfig.CRAFT_ORDER_ALLOW_GATHER.get(),
+                v -> MaidSmartConfig.CRAFT_ORDER_ALLOW_GATHER.set(v), "缺料传送采集（默认开）：缺失材料属于简单可采场景（原木/石料/常见矿）时，她自己找资源点、传送过去采够、再传送回来继续合成；关掉则缺料只报告给你补"));
+        this.rows.add(new NumRow("采集限时（秒）", String.valueOf(MaidSmartConfig.CRAFT_ORDER_GATHER_TIMEOUT.get()),
+                s -> setInt(MaidSmartConfig.CRAFT_ORDER_GATHER_TIMEOUT, s), "采集限时（秒，默认 300）：单次外出采集的最长时间，超时回城并如实报告还缺多少"));
+        this.rows.add(new NumRow("单次委托数量上限", String.valueOf(MaidSmartConfig.CRAFT_ORDER_MAX_COUNT.get()),
+                s -> setInt(MaidSmartConfig.CRAFT_ORDER_MAX_COUNT, s), "单次委托数量上限（默认 512）：一张委托单最多做多少个"));
+        this.rows.add(new NumRow("合成节拍（tick）", String.valueOf(MaidSmartConfig.CRAFT_ORDER_CRAFT_INTERVAL.get()),
+                s -> setInt(MaidSmartConfig.CRAFT_ORDER_CRAFT_INTERVAL, s), "合成节拍（tick/次，默认 10）：每两个合成动作之间的间隔（照原版合成表口径逐次合成，不做瞬间批量）"));
     }
 
 

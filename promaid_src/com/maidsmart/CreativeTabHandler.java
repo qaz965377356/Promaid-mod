@@ -45,6 +45,8 @@ public class CreativeTabHandler {
             event.accept(ProMaidMod.RIDE_BATON);
             // v1.3.9：巡逻航图（管理道具，只进工具页）
             event.accept(ProMaidMod.PATROL_CHART);
+            // 委托合成 v1：委托单（管理道具，只进工具页）
+            event.accept(ProMaidMod.CRAFT_ORDER);
         }
     }
 }

@@ -67,6 +67,11 @@ public class ProMaidMod {
     public static final DeferredItem<Item> PATROL_CHART = ITEMS.register("patrol_chart",
             () -> new com.maidsmart.patrol.PatrolChartItem(new Item.Properties()));
 
+    /** 委托单（委托合成 v1）：右键打开委托界面——选目标物品与数量，女仆按配方树取料/合成
+     *  指定数量后传送到主人身边交付（见 com.maidsmart.craft.CraftOrderManager） */
+    public static final DeferredItem<Item> CRAFT_ORDER = ITEMS.register("craft_order",
+            () -> new com.maidsmart.craft.CraftOrderItem(new Item.Properties()));
+
     public ProMaidMod(ModContainer container) {
         IEventBus modBus = container.getEventBus();
         ITEMS.register(modBus);
@@ -97,6 +102,9 @@ public class ProMaidMod {
         // 自主挖矿（远征）调度器：出征/回城/战斗打断/低血中止（MaidTickEvent 驱动）
         net.neoforged.neoforge.common.NeoForge.EVENT_BUS.register(
                 new com.maidsmart.task.AutoMineManager.Hook());
+        // 委托合成 v1：服务端调度器（接单/取料/采集/合成/交付；MaidTickEvent 驱动）
+        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.register(
+                new com.maidsmart.craft.CraftOrderManager.Hook());
         // v1.2.0：指标石右键女仆 = 绑定/解绑（网络层经 @EventBusSubscriber 自注册）
         net.neoforged.neoforge.common.NeoForge.EVENT_BUS.register(
                 new com.maidsmart.build.IndexStoneInteractHandler());

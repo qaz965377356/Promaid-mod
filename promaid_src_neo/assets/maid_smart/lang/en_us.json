@@ -282,5 +282,17 @@
   "config.promaid.mine.speedFactor": "Mining speed factor",
   "config.promaid.mine.upRange": "Vertical range (up)",
   "config.promaid.mine.valueWeight": "Value weight",
-  "config.promaid.misc.bdStorage": "BeyondDimensions storage integration"
+  "config.promaid.misc.bdStorage": "BeyondDimensions storage integration",
+  "item.maid_smart.craft_order": "Craft Order",
+  "config.promaid.craftOrder": "Craft Order settings",
+  "config.promaid.craftOrder.enable": "Craft order",
+  "config.promaid.craftOrder.scanRadius": "Chest search radius near owner (blocks)",
+  "config.promaid.craftOrder.selfRadius": "Chest search radius near maid (blocks)",
+  "config.promaid.craftOrder.maxDepth": "Recipe expansion depth",
+  "config.promaid.craftOrder.allowGather": "Teleport-gather missing materials",
+  "config.promaid.craftOrder.gatherTimeoutSec": "Gather time limit (seconds)",
+  "config.promaid.craftOrder.maxCount": "Max count per order",
+  "config.promaid.craftOrder.craftInterval": "Craft interval (ticks)",
+  "task.maid_smart.craft": "Craft Order",
+  "task.maid_smart.craft.desc": "Craft Order: pick a target item and amount on the Craft Order item - she gathers materials (chests first, then teleport-gathering for simple resources like logs, stone and common ores), crafts the requested amount, and teleports back to deliver; missing ungatherable materials put the order on hold until you supply them"
 }

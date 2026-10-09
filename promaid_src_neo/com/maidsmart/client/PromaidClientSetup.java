@@ -77,6 +77,44 @@ public final class PromaidClientSetup {
         }
     }
 
+    /** 委托合成 v1：S2C → 打开/刷新委托界面（{@code Screen} 只在客户端专类里开）。 */
+    public static void openCraftOrderScreen(
+            com.maidsmart.craft.CraftOrderNetworking.OpenCraftOrderPacket pkt) {
+        try {
+            net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+            if (mc == null) {
+                return;
+            }
+            if (!pkt.open) {
+                // 刷新（界面开着时的定时拉取）——完整版在这里做数据更新；v1 骨架无数据载荷
+                return;
+            }
+            if (mc.screen instanceof com.maidsmart.craft.CraftOrderScreen) {
+                return; // 已经开着同一界面，不重复重建
+            }
+            mc.setScreen(new com.maidsmart.craft.CraftOrderScreen(pkt.offHand));
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** 委托合成 v1：S2C → 委托状态快照 → 交给委托界面 */
+    public static void acceptCraftOrderState(
+            com.maidsmart.craft.CraftOrderNetworking.StatePacket pkt) {
+        try {
+            com.maidsmart.craft.CraftOrderScreen.acceptState(pkt.offHand, pkt.lines);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** 委托合成 v1：S2C → 女仆名单 → 交给委托界面 */
+    public static void acceptCraftOrderMaids(
+            com.maidsmart.craft.CraftOrderNetworking.MaidListPacket pkt) {
+        try {
+            com.maidsmart.craft.CraftOrderScreen.acceptMaids(pkt.offHand, pkt.rows);
+        } catch (Throwable ignored) {
+        }
+    }
+
     /** v1.3.9：女仆名单（S2C）→ 交给航图界面 */
     public static void updatePatrolMaids(
             com.maidsmart.patrol.PatrolNetworking.MaidListPacket pkt) {

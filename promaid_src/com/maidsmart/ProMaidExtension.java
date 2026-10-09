@@ -633,6 +633,8 @@ public class ProMaidExtension implements ILittleMaid {
         manager.add(new MaidMineTask());
         // v1.3.x：自主挖矿（远征）任务——AutoMineManager 驱动出征/回城/战斗打断/低血中止
         manager.add(new com.maidsmart.task.MaidAutoMineTask());
+        // 委托合成 v1：委托单任务——CraftOrderManager 驱动取料/采集/合成/传送交付
+        manager.add(new com.maidsmart.craft.MaidCraftOrderTask());
         manager.add(new MaidCookTask());
         manager.add(new MaidBrewTask());
         manager.add(new MaidBuildTask());

@@ -2542,6 +2542,12 @@ public class MaidMineBehavior extends Behavior<EntityMaid> {
             BlockState oreState = level.m_8055_(p);
             Integer value = ORE_VALUE.get(oreState.m_60734_());
             if (value == null) {
+                // 委托合成 v1：缺料采集中，目标方块（原木/矿石/石类）以最高价值并入候选——
+                // 挖矿行为其余逻辑一行不动，只在这一处读钩子（照 AutoMineManager.effectiveSearchRadius
+                // 的既有注入范式；不在采集时 GatherHook.valueFor 恒返回 null，行为与旧版逐字一致）
+                value = com.maidsmart.craft.GatherHook.valueFor(maid, oreState);
+            }
+            if (value == null) {
                 continue;
             }
             // 实测五百六十二：home 模式限制圈外的矿不进候选（工作区域=工位锚点圈，
@@ -2649,6 +2655,10 @@ public class MaidMineBehavior extends Behavior<EntityMaid> {
                 continue;
             }
             Integer value = ORE_VALUE.get(st.m_60734_());
+            if (value == null) {
+                // 委托合成 v1：缓存轮同样认采集目标（否则刚扫描到的目标块会在缓存轮被跳过）
+                value = com.maidsmart.craft.GatherHook.valueFor(maid, st);
+            }
             int blocking = cache.blocking.getOrDefault(p, budget + 1);
             if (value == null || blocking > budget) {
                 continue;
