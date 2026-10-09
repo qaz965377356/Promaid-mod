@@ -1249,6 +1249,14 @@ public static final ForgeConfigSpec.IntValue COMBAT_PLACED_LIFETIME;
     public static final ForgeConfigSpec.ConfigValue<List<? extends String>> MISC_PICKUP_BLACKLIST;
     /** 女仆拾取即销毁名单：碰到这些掉落物直接销毁 */
     public static final ForgeConfigSpec.ConfigValue<List<? extends String>> MISC_PICKUP_DESTROY;
+    /** 自主挖矿（远征）一组 */
+    public static final ForgeConfigSpec.BooleanValue AUTO_MINE_ENABLED;
+    public static final ForgeConfigSpec.IntValue AUTO_MINE_TRIP_MINUTES;
+    public static final ForgeConfigSpec.IntValue AUTO_MINE_DISTANCE;
+    public static final ForgeConfigSpec.DoubleValue AUTO_MINE_SCAN_BOOST;
+    public static final ForgeConfigSpec.IntValue AUTO_MINE_HP_ABORT;
+    public static final ForgeConfigSpec.IntValue AUTO_MINE_HP_RESUME;
+    public static final ForgeConfigSpec.BooleanValue AUTO_MINE_RETURN_OWNER;
     public static final ForgeConfigSpec.BooleanValue MISC_SCHEDULE_BUBBLE_ENABLED;
     public static final ForgeConfigSpec.DoubleValue MISC_SCHEDULE_BUBBLE_RADIUS;
     public static final ForgeConfigSpec.BooleanValue MISC_PICKUP_PRIORITY;
@@ -3045,6 +3053,21 @@ public static final ForgeConfigSpec.BooleanValue MISC_DIMENSION_FOLLOW;
         MISC_PICKUP_DESTROY = BUILDER.comment("女仆拾取即销毁名单（默认空）：女仆碰到这些掉落物时**直接销毁**（凭空消失，不进背包也不留地上）——适合挖矿垃圾（圆石/泥土之类）防淹背包；与不拾取名单同时命中时以销毁优先。格式同上（注册 id / 命名空间通配）")
                 .translation("config.promaid.misc.pickupDestroy")
                 .defineList("pickupDestroy", List.of(), o -> o instanceof String s && !s.isEmpty());
+        // v1.3.x：自主挖矿（远征）——任务切到「自主挖矿」后由 AutoMineManager 驱动出征循环
+        AUTO_MINE_ENABLED = BUILDER.comment("自主挖矿（默认开）：给女仆切到「自主挖矿」任务后，她会自动出门远征——按矿脉密度偏好方向（8 方向扫描，偏向矿多的方向）传送到出征距离外的地表点，挖满远征时长后回主人身边；挖矿中近处有怪切战斗（计时暂停）、安全后继续；血量过低或镐子没了/全坏会立即回家中止，血回满且备好镐自动再出发。玩家手动改任务即交还控制权")
+                .translation("config.promaid.misc.autoMine").define("autoMine", true);
+        AUTO_MINE_TRIP_MINUTES = BUILDER.comment("远征时长（分钟，默认 10）：每次远征在外的挖矿时长（战斗打断时暂停计时，打完继续）")
+                .translation("config.promaid.misc.autoMineTripMinutes").defineInRange("autoMineTripMinutes", 10, 1, 60);
+        AUTO_MINE_DISTANCE = BUILDER.comment("出征距离（格，默认 48）：远征点离家/主人多远（16~128）")
+                .translation("config.promaid.misc.autoMineDistance").defineInRange("autoMineDistance", 48, 16, 128);
+        AUTO_MINE_SCAN_BOOST = BUILDER.comment("远征找矿半径倍率（默认 1.5）：在远征点找矿的半径 = 挖矿找矿半径 × 此倍率（远征路上多看几眼矿）")
+                .translation("config.promaid.misc.autoMineScanBoost").defineInRange("autoMineScanBoost", 1.5, 1.0, 3.0);
+        AUTO_MINE_HP_ABORT = BUILDER.comment("低血中止（%，默认 30）：远征中血量低于此值立即回城中止本次")
+                .translation("config.promaid.misc.autoMineHpAbort").defineInRange("autoMineHpAbort", 30, 10, 90);
+        AUTO_MINE_HP_RESUME = BUILDER.comment("再出发血量（%，默认 100）：血量回到此值才再次出征（回血靠 TLM 膳食系统，背包要有食物）")
+                .translation("config.promaid.misc.autoMineHpResume").defineInRange("autoMineHpResume", 100, 50, 100);
+        AUTO_MINE_RETURN_OWNER = BUILDER.comment("回城目标=主人（默认开）：true=回主人身边（主人不在/跨维回出征原点），false=只回出征原点")
+                .translation("config.promaid.misc.autoMineReturnOwner").define("autoMineReturnOwner", true);
         // v1.1.0 实测四百一十：排班女仆贴身情绪气泡（30 条文本池，触发 CD 30 秒）
         MISC_SCHEDULE_BUBBLE_ENABLED = BUILDER.comment("排班贴身气泡（默认开）：靠近排班中的女仆（3.5 格内）时，她随机冒出一条贴身气泡对话（30 条文本池，每只女仆 30 秒最多一条）——情绪价值小彩蛋；战斗/自保/睡觉中不打扰")
                 .translation("config.promaid.misc.scheduleBubbleEnabled").define("scheduleBubbleEnabled", true);

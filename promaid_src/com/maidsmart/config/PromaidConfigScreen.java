@@ -2840,6 +2840,21 @@ public class PromaidConfigScreen extends Screen {
         // v1.5.111：珍稀标记矿物名单已移除（掉落物回收子系统整体删除，见 MaidMineBehavior）
         int oreCount = MaidSmartConfig.MINE_ORE_VALUES.get().size();
         int brkCount = MaidSmartConfig.MINE_BREAKABLES.get().size();
+        // v1.3.x：自主挖矿（远征）
+        this.rows.add(new BoolRow("自主挖矿（远征）", MaidSmartConfig.AUTO_MINE_ENABLED.get(),
+                v -> MaidSmartConfig.AUTO_MINE_ENABLED.set(v), "自主挖矿（默认开）：给女仆切到「自主挖矿」任务（铁镐图标）后自动出门远征——按矿脉密度偏好方向传送到出征距离外的地表点，挖满远征时长回主人身边；近处有怪切战斗（计时暂停）安全后继续；血量过低或镐子没了/全坏立即回家中止，血回满且备好镐自动再出发；手动改任务即交还控制权"));
+        this.rows.add(new NumRow("远征时长（分钟）", String.valueOf(MaidSmartConfig.AUTO_MINE_TRIP_MINUTES.get()),
+                s -> setInt(MaidSmartConfig.AUTO_MINE_TRIP_MINUTES, s), "远征时长（分钟，默认 10）：每次远征在外的挖矿时长（战斗打断时暂停计时，打完继续）"));
+        this.rows.add(new NumRow("出征距离（格）", String.valueOf(MaidSmartConfig.AUTO_MINE_DISTANCE.get()),
+                s -> setInt(MaidSmartConfig.AUTO_MINE_DISTANCE, s), "出征距离（格，默认 48）：远征点离家/主人多远；方向按矿脉密度偏置（8 方向扫描选矿多的）"));
+        this.rows.add(new NumRow("远征找矿半径倍率", String.valueOf(MaidSmartConfig.AUTO_MINE_SCAN_BOOST.get()),
+                s -> setDouble(MaidSmartConfig.AUTO_MINE_SCAN_BOOST, s), "远征找矿半径倍率（默认 1.5）：在远征点找矿的半径 = 挖矿找矿半径 × 此倍率，远征路上多看几眼矿"));
+        this.rows.add(new NumRow("低血中止（%）", String.valueOf(MaidSmartConfig.AUTO_MINE_HP_ABORT.get()),
+                s -> setInt(MaidSmartConfig.AUTO_MINE_HP_ABORT, s), "低血中止（%，默认 30）：远征中血量低于此值立即回城中止本次"));
+        this.rows.add(new NumRow("再出发血量（%）", String.valueOf(MaidSmartConfig.AUTO_MINE_HP_RESUME.get()),
+                s -> setInt(MaidSmartConfig.AUTO_MINE_HP_RESUME, s), "再出发血量（%，默认 100）：血量回到此值才再次出征（回血靠 TLM 膳食系统，背包要有食物）"));
+        this.rows.add(new BoolRow("回城目标=主人", MaidSmartConfig.AUTO_MINE_RETURN_OWNER.get(),
+                v -> MaidSmartConfig.AUTO_MINE_RETURN_OWNER.set(v), "回城目标（默认开=主人身边）：主人不在场/跨维时回出征原点；关闭则只回出征原点"));
         this.rows.add(new BtnRow("矿物 / 障碍物名单", "管理 →（矿 " + oreCount + " · 障 " + brkCount + "）",
                 () -> {
                     this.mineTable = true;

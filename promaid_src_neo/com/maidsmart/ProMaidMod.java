@@ -94,6 +94,9 @@ public class ProMaidMod {
         // 女仆拾取过滤：不拾取 / 拾取即销毁（名单在杂项配置，TLM MaidPickupEvent 驱动）
         net.neoforged.neoforge.common.NeoForge.EVENT_BUS.register(
                 new com.maidsmart.pickup.PickupFilterManager.Hook());
+        // 自主挖矿（远征）调度器：出征/回城/战斗打断/低血中止（MaidTickEvent 驱动）
+        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.register(
+                new com.maidsmart.task.AutoMineManager.Hook());
         // v1.2.0：指标石右键女仆 = 绑定/解绑（网络层经 @EventBusSubscriber 自注册）
         net.neoforged.neoforge.common.NeoForge.EVENT_BUS.register(
                 new com.maidsmart.build.IndexStoneInteractHandler());

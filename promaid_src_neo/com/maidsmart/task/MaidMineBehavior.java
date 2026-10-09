@@ -2084,6 +2084,17 @@ public class MaidMineBehavior extends Behavior<EntityMaid> {
         return ORE_VALUE.containsKey(level.getBlockState(pos).getBlock());
     }
 
+    /** v1.3.x：白名单矿石判定（自主挖矿出征选点用——与实际开采同一张表 ORE_VALUE） */
+    public static boolean isWhitelistOre(net.minecraft.world.level.block.state.BlockState state) {
+        return ORE_VALUE.containsKey(state.getBlock());
+    }
+
+    /** v1.3.x：清锚点与扫描游标（自主挖矿传送后强制在落点重新锚定，不背旧锚） */
+    public static void resetAnchor(int maidEntityId) {
+        ANCHORS.remove(maidEntityId);
+        MINE_SCANS.remove(maidEntityId);
+    }
+
     /**
      * v1.5.189：危险方块规避——该格（或脚下）是岩浆/火/岩浆块/仙人掌/甜浆果/营火
      * 视为危险：挖矿目标或路径上不选（照抄自保 DANGER_BLOCKS 判定，天然回避）
@@ -2473,7 +2484,7 @@ public class MaidMineBehavior extends Behavior<EntityMaid> {
     private BlockPos fullScanOres(ServerLevel level, EntityMaid maid, BlockPos anchor, long now) {
         int id = maid.getId();
         int feetY = anchor.getY();
-        int radius = com.maidsmart.config.MaidSmartConfig.MINE_SEARCH_RADIUS.get();
+        int radius = AutoMineManager.effectiveSearchRadius(maid);
         int down = com.maidsmart.config.MaidSmartConfig.MINE_DOWN_RANGE.get();
         int up = com.maidsmart.config.MaidSmartConfig.MINE_UP_RANGE.get();
         OreScanState st = MINE_SCANS.get(id);
@@ -2573,7 +2584,7 @@ public class MaidMineBehavior extends Behavior<EntityMaid> {
         int feetY = anchor.getY();
         BlockPos best = null;
         double bestScore = Double.MAX_VALUE;
-        int radius = com.maidsmart.config.MaidSmartConfig.MINE_SEARCH_RADIUS.get();
+        int radius = AutoMineManager.effectiveSearchRadius(maid);
         int down = com.maidsmart.config.MaidSmartConfig.MINE_DOWN_RANGE.get();
         int up = com.maidsmart.config.MaidSmartConfig.MINE_UP_RANGE.get();
         int budget = com.maidsmart.config.MaidSmartConfig.MINE_BREAK_BUDGET.get();
