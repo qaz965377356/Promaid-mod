@@ -293,6 +293,11 @@
   "config.promaid.craftOrder.gatherTimeoutSec": "Gather time limit (seconds)",
   "config.promaid.craftOrder.maxCount": "Max count per order",
   "config.promaid.craftOrder.craftInterval": "Craft interval (ticks)",
+  "config.promaid.craftOrder.smeltEnabled": "Furnace smelting support",
+  "config.promaid.craftOrder.meltRadius": "Furnace search radius (blocks)",
+  "config.promaid.craftOrder.meltTimeoutSec": "Smelting time limit (seconds)",
+  "config.promaid.craftOrder.extraGatherItems": "Extra gatherable materials",
+  "config.promaid.craftOrder.queueLimit": "Order queue limit",
   "task.maid_smart.craft": "Craft Order",
   "task.maid_smart.craft.desc": "Craft Order: pick a target item and amount on the Craft Order item - she gathers materials (chests first, then teleport-gathering for simple resources like logs, stone and common ores), crafts the requested amount, and teleports back to deliver; missing ungatherable materials put the order on hold until you supply them"
 }

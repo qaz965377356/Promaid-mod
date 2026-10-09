@@ -106,6 +106,8 @@ public final class CraftOrderManager {
         Phase phase = Phase.ANALYZE;
         /** 开工时她背包里目标物品的基线数（交付只交增量） */
         int baseTargetCount;
+        /** V2-C：排队中的后续委托（当前单在 order，排队的在这里） */
+        final java.util.ArrayDeque<CraftOrder> pendingOrders = new java.util.ArrayDeque<>();
         /** FETCH */
         final List<Fetch> queue = new ArrayList<>();
         BlockPos targetChest;
@@ -116,6 +118,10 @@ public final class CraftOrderManager {
         int stepIndex;
         int stepDone;
         long nextCraftTick;
+        /** V2-A：熔炼子状态（当前熔炉、已收取数、限时） */
+        BlockPos meltFurnace;
+        int meltCollected;
+        long meltDeadline;
         /** GATHER */
         GatherHook.Kind gatherKind;
         List<Item> gatherCandidates = List.of();
@@ -156,20 +162,31 @@ public final class CraftOrderManager {
             if (target == null) {
                 return "没选物品";
             }
-            State old = STATES.get(maid);
-            if (old != null && old.busy()) {
-                return "她手上还有一张委托没做完（可先取消）";
-            }
             int want = Math.max(1, Math.min(count,
                     com.maidsmart.config.MaidSmartConfig.CRAFT_ORDER_MAX_COUNT.get()));
+            long nowGame = maid.level() instanceof ServerLevel lv ? lv.getGameTime() : 0L;
+            CraftOrder newOrder = new CraftOrder(player.getUUID(), target,
+                    Math.min(want, CraftPlanner.MAX_COUNT), allowGather, nowGame);
+            State old = STATES.get(maid);
+            if (old != null && old.busy()) {
+                // V2-C：已有委托在跑 → 排队（上限 queueLimit）
+                int limit = Math.max(1, com.maidsmart.config.MaidSmartConfig.CRAFT_ORDER_QUEUE_LIMIT.get());
+                if (old.pendingOrders.size() >= limit) {
+                    return "她的委托队列满了（最多 " + limit + " 张排队）";
+                }
+                old.pendingOrders.add(newOrder);
+                sayBubbleRare(maid, old, "又接了一张：「" + name(target) + "」×" + newOrder.count
+                        + "（排在第 " + old.pendingOrders.size() + " 位）～");
+                return "";
+            }
             State s = STATES.computeIfAbsent(maid, k -> new State());
-            s.order = new CraftOrder(player.getUUID(), target,
-                    Math.min(want, CraftPlanner.MAX_COUNT), allowGather,
-                    maid.level() instanceof ServerLevel lv ? lv.getGameTime() : 0L);
+            s.order = newOrder;
             s.plan = null;
             s.phase = Phase.ANALYZE;
             s.queue.clear();
             s.targetChest = null;
+            s.meltFurnace = null;
+            s.meltCollected = 0;
             s.stepIndex = 0;
             s.stepDone = 0;
             s.combatByMe = false;
@@ -187,7 +204,7 @@ public final class CraftOrderManager {
         }
     }
 
-    /** 取消委托（界面按钮）。返回是否真的取消了。 */
+    /** 取消当前委托（V2-C：有排队则自动接下一张）。返回是否真的取消了。 */
     public static boolean cancel(EntityMaid maid) {
         try {
             State s = STATES.get(maid);
@@ -195,12 +212,54 @@ public final class CraftOrderManager {
                 return false;
             }
             GatherHook.end(maid);
-            say(maid, s, "好吧，委托先取消～");
+            if (!s.pendingOrders.isEmpty()) {
+                advanceToNext(maid, s, "这张先取消，接下一张～");
+            } else {
+                say(maid, s, "好吧，委托先取消～");
+                STATES.remove(maid);
+            }
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** 清空全部委托（当前 + 排队）。返回是否真的清了。 */
+    public static boolean cancelAll(EntityMaid maid) {
+        try {
+            State s = STATES.get(maid);
+            if (s == null || !s.busy()) {
+                return false;
+            }
+            GatherHook.end(maid);
+            s.pendingOrders.clear();
+            say(maid, s, "好吧，全部委托都取消～");
             STATES.remove(maid);
             return true;
         } catch (Throwable t) {
             return false;
         }
+    }
+
+    /** V2-C：推进到下一张排队的委托（交付完成与取消当前共用） */
+    private static void advanceToNext(EntityMaid maid, State s, String msg) {
+        CraftOrder next = s.pendingOrders.poll();
+        if (next == null) {
+            STATES.remove(maid);
+            return;
+        }
+        s.order = next;
+        s.plan = null;
+        s.phase = Phase.ANALYZE;
+        s.targetChest = null;
+        s.meltFurnace = null;
+        s.meltCollected = 0;
+        s.stepIndex = 0;
+        s.stepDone = 0;
+        s.combatByMe = false;
+        s.baseTargetCount = countInInv(maid.getAvailableBackpackInv(), List.of(next.target));
+        say(maid, s, msg + "新单：「" + name(next.target) + "」×" + next.count
+                + (s.pendingOrders.isEmpty() ? "" : "（后面还排着 " + s.pendingOrders.size() + " 张）"));
     }
 
     /** 界面快照：{hasOrder, 目标行, 阶段行, 缺口行, 备注行}（服务端算好，客户端只管显示） */
@@ -213,7 +272,8 @@ public final class CraftOrderManager {
             ServerLevel level = maid.level() instanceof ServerLevel lv ? lv : null;
             long now = level == null ? 0 : level.getGameTime();
             String l1 = "目标：" + name(s.order.target) + " ×" + s.order.count
-                    + (s.order.allowGather ? "（允许自采）" : "（只用手头材料）");
+                    + (s.order.allowGather ? "（允许自采）" : "（只用手头材料）")
+                    + (s.pendingOrders.isEmpty() ? "" : "　§e[后面还排着 " + s.pendingOrders.size() + " 张]");
             String l2;
             String l3 = "";
             String l4 = "";
@@ -233,9 +293,17 @@ public final class CraftOrderManager {
                 }
                 case CRAFT -> {
                     int total = s.plan == null ? 0 : s.plan.steps.size();
-                    l2 = "阶段：合成中（第 " + Math.min(s.stepIndex + 1, Math.max(1, total)) + " / " + Math.max(1, total) + " 步）";
-                    l3 = s.plan != null && s.stepIndex < s.plan.steps.size()
-                            ? "当前：" + name(s.plan.steps.get(s.stepIndex).output.getItem()) : "";
+                    boolean melting = s.plan != null && s.stepIndex < s.plan.steps.size()
+                            && s.plan.steps.get(s.stepIndex).kind == CraftPlanner.Step.Kind.SMELT;
+                    if (melting) {
+                        CraftPlanner.Step st = s.plan.steps.get(s.stepIndex);
+                        l2 = "阶段：熔炼中（已收 " + s.meltCollected + "/" + st.times + "）";
+                        l3 = "当前：" + name(st.output.getItem()) + "（熔炉烧制中，燃料与材料都从她背包出）";
+                    } else {
+                        l2 = "阶段：合成中（第 " + Math.min(s.stepIndex + 1, Math.max(1, total)) + " / " + Math.max(1, total) + " 步）";
+                        l3 = s.plan != null && s.stepIndex < s.plan.steps.size()
+                                ? "当前：" + name(s.plan.steps.get(s.stepIndex).output.getItem()) : "";
+                    }
                 }
                 case DELIVER -> l2 = "阶段：收尾（传送回主人身边交付）";
                 case STALL -> {
@@ -729,6 +797,11 @@ public final class CraftOrderManager {
             return;
         }
         CraftPlanner.Step step = s.plan.steps.get(s.stepIndex);
+        if (step.kind == CraftPlanner.Step.Kind.SMELT) {
+            // V2-A：熔炼步骤——找熔炉放料加燃料，等烧好收取（内部自带节流）
+            stepMelt(maid, level, s, now);
+            return;
+        }
         IItemHandler inv = maid.getAvailableBackpackInv();
         // 抽料（每格 1 个，原版合成台口径）
         List<ItemStack> used = new ArrayList<>();
@@ -757,6 +830,199 @@ public final class CraftOrderManager {
         s.nextCraftTick = now + Math.max(2, com.maidsmart.config.MaidSmartConfig.CRAFT_ORDER_CRAFT_INTERVAL.get());
         if (s.stepIndex >= s.plan.steps.size()) {
             s.phase = Phase.DELIVER;
+        }
+    }
+
+    /* ==================== V2-A：熔炼步骤（熔炉放料烧制） ==================== */
+
+    /** 熔炉节拍（tick/轮） */
+    private static final int MELT_STEP_TICKS = 10;
+
+    /**
+     * 熔炼步骤执行：找空闲熔炉/高炉 → 走到炉边 → 放输入 + 补燃料 → 轮询收取。
+     * 【真实性】材料与燃料都从她背包出、真进炉子（你也看得到、随时能接手）；
+     * 只使用"输入槽与输出槽都空"的炉子，不打扰你正在用的炉子。
+     */
+    private static void stepMelt(EntityMaid maid, ServerLevel level, State s, long now) {
+        CraftPlanner.Step step = s.plan.steps.get(s.stepIndex);
+        if (step.ingredients.isEmpty()) {
+            stall(maid, level, s, "这条熔炼配方不对劲，先停下～");
+            return;
+        }
+        // 炉子失效（被拆/被换）→ 重新找（已收取的计数保留——它们在她背包里）
+        if (s.meltFurnace != null
+                && !(level.getBlockEntity(s.meltFurnace) instanceof net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity)) {
+            s.meltFurnace = null;
+        }
+        if (s.meltFurnace == null) {
+            s.meltFurnace = findFreeFurnace(level, maid.blockPosition());
+            if (s.meltFurnace == null) {
+                stall(maid, level, s, "附近没有空闲的熔炉/高炉，放一个吧～");
+                return;
+            }
+            s.meltDeadline = now + Math.max(60,
+                    com.maidsmart.config.MaidSmartConfig.CRAFT_ORDER_MELT_TIMEOUT.get()) * 20L;
+            maid.getBrain().setMemory(MemoryModuleType.WALK_TARGET,
+                    new net.minecraft.world.entity.ai.memory.WalkTarget(s.meltFurnace, 0.7f, 2));
+            s.nextCraftTick = now + MELT_STEP_TICKS;
+            return;
+        }
+        // 走位
+        double dSq = maid.blockPosition().distSqr(s.meltFurnace);
+        if (dSq > REACH_SQ) {
+            if (now > s.meltDeadline) {
+                stall(maid, level, s, "熔炉我走不过去，先停下～");
+                return;
+            }
+            if (maid.getBrain().getMemory(MemoryModuleType.WALK_TARGET).isEmpty()) {
+                maid.getBrain().setMemory(MemoryModuleType.WALK_TARGET,
+                        new net.minecraft.world.entity.ai.memory.WalkTarget(s.meltFurnace, 0.7f, 2));
+            }
+            s.nextCraftTick = now + MELT_STEP_TICKS;
+            return;
+        }
+        if (!(level.getBlockEntity(s.meltFurnace) instanceof net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity f)) {
+            s.meltFurnace = null;
+            s.nextCraftTick = now + MELT_STEP_TICKS;
+            return;
+        }
+        // 收取产出（每轮都收——输出槽满会停炉，及时取走）
+        ItemStack out = f.getItem(2);
+        if (!out.isEmpty()) {
+            ItemStack taken = f.removeItemNoUpdate(2);
+            ItemStack remain = ItemHandlerHelper.insertItemStacked(maid.getAvailableBackpackInv(), taken, false);
+            if (!remain.isEmpty()) {
+                f.setItem(2, remain);
+            }
+            s.meltCollected += taken.getCount() - remain.getCount();
+            maid.swing(InteractionHand.MAIN_HAND);
+        }
+        // 烧够 → 推进
+        if (s.meltCollected >= step.times) {
+            s.meltFurnace = null;
+            s.meltCollected = 0;
+            s.stepIndex++;
+            s.stepDone = 0;
+            s.nextCraftTick = now + Math.max(2,
+                    com.maidsmart.config.MaidSmartConfig.CRAFT_ORDER_CRAFT_INTERVAL.get());
+            if (s.stepIndex >= s.plan.steps.size()) {
+                s.phase = Phase.DELIVER;
+            }
+            return;
+        }
+        if (now > s.meltDeadline) {
+            stall(maid, level, s, "烧炼等待超时，先停下（可调「熔炼限时」）～");
+            return;
+        }
+        // 补输入：槽 0 空 → 从背包抽一个堆（保留 NBT；不够下一轮再补）
+        if (f.getItem(0).isEmpty()) {
+            int want = Math.min(step.times - s.meltCollected, 64);
+            IItemHandler inv = maid.getAvailableBackpackInv();
+            ItemStack input = ItemStack.EMPTY;
+            for (int i = 0; i < inv.getSlots(); i++) {
+                ItemStack st = inv.getStackInSlot(i);
+                if (!st.isEmpty() && step.ingredients.get(0).test(st)) {
+                    input = inv.extractItem(i, Math.min(want, st.getCount()), false);
+                    break;
+                }
+            }
+            if (!input.isEmpty()) {
+                f.setItem(0, input);
+                maid.swing(InteractionHand.MAIN_HAND);
+            } else {
+                stall(maid, level, s, "烧到一半材料不够了（缺「"
+                        + name(step.ingredients.get(0).getItems()[0].getItem()) + "」），给我补点～");
+                return;
+            }
+        }
+        // 补燃料：槽 1 空 → 从背包抽 1 个燃料（优先煤/木炭/煤炭块；不把装备当柴烧）
+        if (f.getItem(1).isEmpty()) {
+            ItemStack fuel = extractFuel(level, maid.getAvailableBackpackInv());
+            if (!fuel.isEmpty()) {
+                f.setItem(1, fuel);
+            } else {
+                stall(maid, level, s, "没有燃料了（煤/木炭/任何可燃物都行），给我补点～");
+                return;
+            }
+        }
+        s.nextCraftTick = now + MELT_STEP_TICKS;
+    }
+
+    /** 找空闲熔炉/高炉（输入槽与输出槽都空；烟熏炉不收——它只烧食物）；找不到返回 null */
+    private static BlockPos findFreeFurnace(ServerLevel level, BlockPos center) {
+        int radius = Math.max(4, com.maidsmart.config.MaidSmartConfig.CRAFT_ORDER_MELT_RADIUS.get());
+        for (BlockEntity be : blockEntitiesNear(level, center, radius)) {
+            boolean isFurnace = be instanceof net.minecraft.world.level.block.entity.FurnaceBlockEntity
+                    || be instanceof net.minecraft.world.level.block.entity.BlastFurnaceBlockEntity;
+            if (!isFurnace || !(be instanceof net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity f)) {
+                continue;
+            }
+            if (f.getItem(0).isEmpty() && f.getItem(2).isEmpty()) {
+                return be.getBlockPos();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 从背包抽 1 个燃料：第一轮只在煤/木炭/煤炭块里挑（热量高、不占特殊物品）；
+     * 没有才退而求其次选任意 isFuel 且无耐久的物品（跳过熔岩桶——烧完空桶会占住燃料槽）。
+     */
+    private static ItemStack extractFuel(ServerLevel level, IItemHandler inv) {
+        int bestSlot = -1;
+        int bestTicks = 0;
+        for (int i = 0; i < inv.getSlots(); i++) {
+            ItemStack st = inv.getStackInSlot(i);
+            if (st.isEmpty()) {
+                continue;
+            }
+            String id = idOf(st.getItem());
+            if (!"minecraft:coal".equals(id) && !"minecraft:charcoal".equals(id)
+                    && !"minecraft:coal_block".equals(id)) {
+                continue;
+            }
+            int t = burnTicks(level, st);
+            if (t > bestTicks) {
+                bestTicks = t;
+                bestSlot = i;
+            }
+        }
+        if (bestSlot < 0) {
+            for (int i = 0; i < inv.getSlots(); i++) {
+                ItemStack st = inv.getStackInSlot(i);
+                if (st.isEmpty() || st.getMaxDamage() > 0) {
+                    continue;
+                }
+                String id = idOf(st.getItem());
+                if ("minecraft:lava_bucket".equals(id)) {
+                    continue;
+                }
+                int t = burnTicks(level, st);
+                if (t > bestTicks) {
+                    bestTicks = t;
+                    bestSlot = i;
+                }
+            }
+        }
+        return bestSlot < 0 ? ItemStack.EMPTY : inv.extractItem(bestSlot, 1, false);
+    }
+
+    private static int burnTicks(ServerLevel level, ItemStack st) {
+        try {
+            // 1.21.1 的 FuelValues 获取路径与 1.20.1 不同——这里只用 isFuel 做资格判定；
+            // 时长仅用于"燃料偏好排序"（挑热值最大的），拿不到就用 1，不影响正确性
+            return net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity.isFuel(st) ? 1 : 0;
+        } catch (Throwable t) {
+            return 0;
+        }
+    }
+
+    private static String idOf(Item item) {
+        try {
+            ResourceLocation id = net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(item);
+            return id == null ? "" : id.toString();
+        } catch (Throwable t) {
+            return "";
         }
     }
 
@@ -814,7 +1080,11 @@ public final class CraftOrderManager {
             say(maid, s, "「" + name(s.order.target) + "」做好啦（你不在旁边，先放我这儿）～");
         }
         GatherHook.end(maid);
-        STATES.remove(maid); // 完成：清委托（任务保留 craft = 待命）
+        if (!s.pendingOrders.isEmpty()) {
+            advanceToNext(maid, s, "这张做完啦～"); // V2-C：自动接下一张
+        } else {
+            STATES.remove(maid); // 完成：清委托（任务保留 craft = 待命）
+        }
     }
 
     /* ==================== STALL：挂起等补料（每秒自动重试） ==================== */

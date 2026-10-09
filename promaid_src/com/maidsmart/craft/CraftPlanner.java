@@ -7,6 +7,7 @@ import net.minecraft.world.item.crafting.CraftingRecipe;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.RecipeManager;
 import net.minecraft.world.item.crafting.RecipeType;
+import net.minecraft.world.item.crafting.SmeltingRecipe;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -85,18 +86,28 @@ public final class CraftPlanner {
     }
 
     /**
-     * 一条合成步骤：把 {@link #ingredients} 每格各 1 个、按原版合成台口径合成 {@link #times} 次，
-     * 共产出 {@code output.count × times} 个产物。执行顺序 = {@link Plan#steps} 表内从前到后。
+     * 一条加工步骤——两种：
+     * <ul>
+     *   <li>{@code CRAFT}：把 {@link #ingredients} 每格各 1 个、按原版合成台口径合成 {@link #times} 次；</li>
+     *   <li>{@code SMELT}：把 {@link #ingredients} 第 0 格的物品 {@link #times} 份放进熔炉烧炼
+     *       （燃料由执行端从背包补，见 CraftOrderManager；V2-A 新增）。</li>
+     * </ul>
+     * 执行顺序 = {@link Plan#steps} 表内从前到后。
      */
     public static final class Step {
+        public enum Kind { CRAFT, SMELT }
+
+        /** 步骤类型 */
+        public final Kind kind;
         /** 配方输出（含每次产出个数；执行时按 copy() 使用） */
         public final ItemStack output;
-        /** 合成次数 */
+        /** 加工次数（CRAFT=合成次数；SMELT=烧炼份数） */
         public final int times;
-        /** 每格材料（已滤掉空槽；有序配方 3×3 里的空槽不入表） */
+        /** 材料（CRAFT=每格 1 个；SMELT=第 0 格为输入，每份 1 个） */
         public final List<Ingredient> ingredients;
 
-        Step(ItemStack output, int times, List<Ingredient> ingredients) {
+        Step(Kind kind, ItemStack output, int times, List<Ingredient> ingredients) {
+            this.kind = kind;
             this.output = output;
             this.times = times;
             this.ingredients = ingredients;
@@ -222,6 +233,8 @@ public final class CraftPlanner {
     private static final class Expander {
         /** 产物物品 → 配方列表（一次全量枚举建好，避免展开中反复 O(N) 扫描） */
         private final Map<Item, List<CraftingRecipe>> byOutput = new HashMap<>();
+        /** V2-A：产物物品 → 熔炼配方（SMELTING；一物一炉通常只有一个，取先扫到的） */
+        private final Map<Item, SmeltingRecipe> bySmelt = new HashMap<>();
         private final RegistryAccess access;
         private final int maxDepth;
         private final Map<Item, Integer> stock;
@@ -249,11 +262,21 @@ public final class CraftPlanner {
                 }
                 byOutput.computeIfAbsent(out.m_41720_(), k -> new ArrayList<>()).add(r);
             }
+            // V2-A：熔炼索引（SMELTING 类型全量扫；一物取先扫到的那个配方）
+            for (SmeltingRecipe r : recipes.m_44013_(RecipeType.f_44108_)) {
+                ItemStack out = r.m_8043_(access);
+                if (out.m_41619_()) {
+                    continue;
+                }
+                bySmelt.putIfAbsent(out.m_41720_(), r);
+            }
         }
 
         void expandTop(Item target, int count) {
-            if (chooseRecipe(target) == null) {
-                failReason = "没有可用的合成配方";
+            boolean hasCraft = chooseRecipe(target) != null;
+            boolean hasSmelt = smeltEnabled() && !gatherable.test(target) && chooseSmelt(target) != null;
+            if (!hasCraft && !hasSmelt) {
+                failReason = "没有可用的配方（合成/熔炼都没有）";
                 craftable = false;
                 return;
             }
@@ -274,9 +297,31 @@ public final class CraftPlanner {
                 leaf(item, count, via);
                 return;
             }
-            CraftingRecipe r = depth >= maxDepth ? null : chooseRecipe(item);
-            if (r == null) {
+            CraftingRecipe r = null;
+            SmeltingRecipe sm = null;
+            if (depth < maxDepth) {
+                r = chooseRecipe(item);
+                sm = smeltEnabled() ? chooseSmelt(item) : null;
+                // V2-A：自身可采的物品保持「直接采集」（白名单都是基础材料，与 v1 行为一致），
+                // 不因熔炼配方改道；其余物品在「合成台」与「熔炼」之间比材料可得度（库存 ∪ 可采），
+                // 平手时合成台优先
+                if (sm != null && gatherable.test(item)) {
+                    sm = null;
+                }
+                if (r != null && sm != null) {
+                    if (scoreOfSmelt(sm) > scoreOfCraft(r)) {
+                        r = null;
+                    } else {
+                        sm = null;
+                    }
+                }
+            }
+            if (r == null && sm == null) {
                 leaf(item, count, via);
+                return;
+            }
+            if (sm != null) {
+                expandSmelt(item, count, depth, via, sm);
                 return;
             }
             if (steps.size() >= MAX_STEPS) {
@@ -300,7 +345,7 @@ public final class CraftPlanner {
                 }
             }
             // 后序添加：子材料步骤已在前，当前步骤押后——执行时从前到后即依赖序
-            steps.add(new Step(out.m_41777_(), times, ings));
+            steps.add(new Step(Step.Kind.CRAFT, out.m_41777_(), times, ings));
             stack.remove(item);
         }
 
@@ -359,7 +404,12 @@ public final class CraftPlanner {
 
         /** 环判定：某个材料格的**全部候选**都已在展开栈上 → 该配方弃用（防 9 锭↔块 式空转）。 */
         private boolean introducesCycle(CraftingRecipe r) {
-            for (Ingredient ing : r.m_7527_()) {
+            return introducesCycle(r.m_7527_());
+        }
+
+        /** 环判定的通用版（V2-A：熔炼配方同样适用） */
+        private boolean introducesCycle(List<Ingredient> list) {
+            for (Ingredient ing : list) {
                 if (ing == null || ing.m_43908_().length == 0) {
                     continue;
                 }
@@ -375,6 +425,110 @@ public final class CraftPlanner {
                 }
             }
             return false;
+        }
+
+        /* ==================== V2-A：熔炼路径 ==================== */
+
+        /** 熔炼路径选择：有配方 + 不引入环；没有返回 null */
+        private SmeltingRecipe chooseSmelt(Item item) {
+            SmeltingRecipe r = bySmelt.get(item);
+            if (r == null) {
+                return null;
+            }
+            return introducesCycle(r.m_7527_()) ? null : r;
+        }
+
+        private boolean smeltEnabled() {
+            try {
+                return com.maidsmart.config.MaidSmartConfig.CRAFT_ORDER_SMELT_ENABLED.get();
+            } catch (Throwable t) {
+                return true;
+            }
+        }
+
+        /** 材料可得度（库存有 ∪ 可采集）——合成/熔炼路径比较用 */
+        private boolean obtainable(Ingredient ing) {
+            for (ItemStack s : ing.m_43908_()) {
+                Item it = s.m_41720_();
+                if (stock.getOrDefault(it, 0) > 0 || gatherable.test(it)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private int scoreOfCraft(CraftingRecipe r) {
+            int score = 0;
+            for (Ingredient ing : r.m_7527_()) {
+                if (ing == null || ing.m_43908_().length == 0) {
+                    continue;
+                }
+                if (obtainable(ing)) {
+                    score++;
+                }
+            }
+            return score;
+        }
+
+        private int scoreOfSmelt(SmeltingRecipe r) {
+            int score = 0;
+            for (Ingredient ing : r.m_7527_()) {
+                if (ing == null || ing.m_43908_().length == 0) {
+                    continue;
+                }
+                if (obtainable(ing)) {
+                    score++;
+                }
+            }
+            if (fuelInStock()) {
+                score++; // 燃料粗判（执行端还会精确补/报）
+            }
+            return score;
+        }
+
+        /** 库存里有没有可用燃料（isFuel 且无耐久——不把装备当柴烧） */
+        private boolean fuelInStock() {
+            try {
+                for (Item it : stock.keySet()) {
+                    ItemStack st = new ItemStack(it);
+                    if (net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity.m_58399_(st)
+                            && st.m_41776_() <= 0) {
+                        return true;
+                    }
+                }
+            } catch (Throwable ignored) {
+            }
+            return false;
+        }
+
+        /** V2-A：熔炼展开——输入（每份 1 个）继续递归，产出一条 SMELT 步骤 */
+        private void expandSmelt(Item item, int count, int depth, Ingredient via, SmeltingRecipe r) {
+            if (++nodes > MAX_NODES) {
+                failReason = "配方树过大（超过 " + MAX_NODES + " 个节点）";
+                return;
+            }
+            ItemStack out = r.m_8043_(access);
+            int outCount = Math.max(1, out.m_41613_());
+            int times = (count + outCount - 1) / outCount;
+            if (steps.size() >= MAX_STEPS) {
+                failReason = "合成步骤过多（超过 " + MAX_STEPS + " 步）";
+                return;
+            }
+            stack.add(item);
+            List<Ingredient> ings = new ArrayList<>();
+            for (Ingredient ing : r.m_7527_()) {
+                if (ing == null || ing.m_43908_().length == 0) {
+                    continue;
+                }
+                ings.add(ing);
+                expand(chooseBranch(ing), times, depth + 1, ing);
+                if (failReason != null) {
+                    stack.remove(item);
+                    return;
+                }
+            }
+            steps.add(new Step(Step.Kind.SMELT, out.m_41777_(), times, ings));
+            stack.remove(item);
         }
 
         private boolean poolHas(Ingredient ing) {

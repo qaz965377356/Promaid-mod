@@ -4922,6 +4922,18 @@ public void render(GuiGraphics g, int index, int top, int left, int width, int h
                 s -> setInt(MaidSmartConfig.CRAFT_ORDER_MAX_COUNT, s), "单次委托数量上限（默认 512）：一张委托单最多做多少个"));
         this.rows.add(new NumRow("合成节拍（tick）", String.valueOf(MaidSmartConfig.CRAFT_ORDER_CRAFT_INTERVAL.get()),
                 s -> setInt(MaidSmartConfig.CRAFT_ORDER_CRAFT_INTERVAL, s), "合成节拍（tick/次，默认 10）：每两个合成动作之间的间隔（照原版合成表口径逐次合成，不做瞬间批量）"));
+        // ---- 委托合成 V2 ----
+        this.rows.add(new BoolRow("烧炼支持", MaidSmartConfig.CRAFT_ORDER_SMELT_ENABLED.get(),
+                v -> MaidSmartConfig.CRAFT_ORDER_SMELT_ENABLED.set(v), "烧炼支持（默认开）：材料需要炉子加工时（如粗铁→铁锭、沙→玻璃），她会找附近空闲的熔炉/高炉、放料加燃料、等烧好收取——真实消耗材料与燃料，炉子里的东西你也看得到；关 = 烧炼类物品视作不可得，缺了只报告"));
+        this.rows.add(new NumRow("找熔炉半径（格）", String.valueOf(MaidSmartConfig.CRAFT_ORDER_MELT_RADIUS.get()),
+                s -> setInt(MaidSmartConfig.CRAFT_ORDER_MELT_RADIUS, s), "找熔炉半径（格，默认 16）：只找她身边这个范围内的空闲熔炉/高炉（烟熏炉不收——它只烧食物）"));
+        this.rows.add(new NumRow("熔炼限时（秒）", String.valueOf(MaidSmartConfig.CRAFT_ORDER_MELT_TIMEOUT.get()),
+                s -> setInt(MaidSmartConfig.CRAFT_ORDER_MELT_TIMEOUT, s), "熔炼限时（秒，默认 900）：单次烧炼等待的最长时间（原版速度烧一组要十几分钟，别调太小）"));
+        this.rows.add(new TextRow("额外可采材料", String.join(",", (List<String>) MaidSmartConfig.CRAFT_ORDER_EXTRA_GATHER.get()),
+                s -> setStringList(MaidSmartConfig.CRAFT_ORDER_EXTRA_GATHER, s),
+                "额外可采材料（默认空）：让「缺料自采」也认你的模组材料——逗号分隔，每条 物品id 或 物品id=WOOD|MINE（省略=MINE），如 thermal:tin_ingot=MINE；采集目标方块按同名方块解析（物品 id 与方块 id 同名时生效），找不到对应方块则该条忽略"));
+        this.rows.add(new NumRow("委托队列上限", String.valueOf(MaidSmartConfig.CRAFT_ORDER_QUEUE_LIMIT.get()),
+                s -> setInt(MaidSmartConfig.CRAFT_ORDER_QUEUE_LIMIT, s), "委托队列上限（默认 3）：一位女仆最多排几张委托，做完一张自动接下一张"));
     }
 
 

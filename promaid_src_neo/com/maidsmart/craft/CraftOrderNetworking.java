@@ -130,6 +130,11 @@ public final class CraftOrderNetworking {
                 sendState(player, p.offHand, CraftOrderManager.snapshot(maid));
                 return;
             }
+            if ("cancel_all".equals(p.op)) {
+                CraftOrderManager.cancelAll(maid);
+                sendState(player, p.offHand, CraftOrderManager.snapshot(maid));
+                return;
+            }
             if ("submit".equals(p.op)) {
                 Item item = findItem(p.itemId);
                 if (item == null) {

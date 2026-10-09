@@ -326,6 +326,17 @@ public static final ModConfigSpec.IntValue BUILD_CHEST_FETCH_COOLDOWN;
     public static final ModConfigSpec.IntValue CRAFT_ORDER_MAX_COUNT;
     /** 合成节拍（tick/次）：两个合成动作之间的间隔 */
     public static final ModConfigSpec.IntValue CRAFT_ORDER_CRAFT_INTERVAL;
+    // ---- 委托合成 V2 ----
+    /** 烧炼支持（默认开）：缺料需要炉子加工（粗铁→铁锭等）时找空闲熔炉放料烧制 */
+    public static final ModConfigSpec.BooleanValue CRAFT_ORDER_SMELT_ENABLED;
+    /** 找熔炉半径（格） */
+    public static final ModConfigSpec.IntValue CRAFT_ORDER_MELT_RADIUS;
+    /** 熔炼限时（秒） */
+    public static final ModConfigSpec.IntValue CRAFT_ORDER_MELT_TIMEOUT;
+    /** 额外可采材料（物品id[=WOOD|MINE]，逗号分隔） */
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> CRAFT_ORDER_EXTRA_GATHER;
+    /** 委托队列上限（一位女仆最多排几张） */
+    public static final ModConfigSpec.IntValue CRAFT_ORDER_QUEUE_LIMIT;
     // v1.1.0：主动切换战斗模式（主人受攻击 → 附近女仆立即切战斗，威胁消失还原）
     public static final ModConfigSpec.BooleanValue COMBAT_AUTO_SWITCH;
     public static final ModConfigSpec.IntValue COMBAT_AUTO_SWITCH_RADIUS;
@@ -1763,6 +1774,17 @@ public static final ModConfigSpec.BooleanValue MISC_DIMENSION_FOLLOW;
                 .translation("config.promaid.craftOrder.maxCount").defineInRange("maxCount", 512, 1, 4096);
         CRAFT_ORDER_CRAFT_INTERVAL = BUILDER.comment("合成节拍（tick/次，默认 10）：每两个合成动作之间的间隔（照原版合成表口径逐次合成，不做瞬间批量）")
                 .translation("config.promaid.craftOrder.craftInterval").defineInRange("craftInterval", 10, 2, 40);
+        CRAFT_ORDER_SMELT_ENABLED = BUILDER.comment("烧炼支持（默认开）：材料需要炉子加工时（如粗铁→铁锭、沙→玻璃），她会找附近**空闲的熔炉/高炉**、放料加燃料、等烧好收取——真实消耗材料与燃料，炉子里的东西你也看得到；关 = 烧炼类物品视作不可得，缺了只报告让你补")
+                .translation("config.promaid.craftOrder.smeltEnabled").define("smeltEnabled", true);
+        CRAFT_ORDER_MELT_RADIUS = BUILDER.comment("找熔炉半径（格，默认 16）：只找她身边这个范围内的空闲熔炉/高炉（烟熏炉不收——它只烧食物）")
+                .translation("config.promaid.craftOrder.meltRadius").defineInRange("meltRadius", 16, 4, 32);
+        CRAFT_ORDER_MELT_TIMEOUT = BUILDER.comment("熔炼限时（秒，默认 900）：单次烧炼等待的最长时间（原版速度烧一组要十几分钟，别调太小）")
+                .translation("config.promaid.craftOrder.meltTimeoutSec").defineInRange("meltTimeoutSec", 900, 60, 3600);
+        CRAFT_ORDER_EXTRA_GATHER = BUILDER.comment("额外可采材料（默认空）：让「缺料自采」也认你的模组材料——逗号分隔，每条 `物品id` 或 `物品id=WOOD|MINE`（省略=MINE），如 thermal:tin_ingot=MINE；采集目标方块按同名方块解析（物品 id 与方块 id 同名时生效），找不到对应方块则该条忽略")
+                .translation("config.promaid.craftOrder.extraGatherItems")
+                .defineList("extraGatherItems", java.util.List.of(), o -> o instanceof String s && !s.isEmpty());
+        CRAFT_ORDER_QUEUE_LIMIT = BUILDER.comment("委托队列上限（默认 3）：一位女仆最多排几张委托，做完一张自动接下一张")
+                .translation("config.promaid.craftOrder.queueLimit").defineInRange("queueLimit", 3, 1, 10);
         BUILDER.pop();
 
         // ---- AI 记忆 ----

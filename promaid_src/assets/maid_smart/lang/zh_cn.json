@@ -413,6 +413,11 @@
   "config.promaid.craftOrder.gatherTimeoutSec": "采集限时（秒）",
   "config.promaid.craftOrder.maxCount": "单次委托数量上限",
   "config.promaid.craftOrder.craftInterval": "合成节拍（tick）",
+  "config.promaid.craftOrder.smeltEnabled": "烧炼支持",
+  "config.promaid.craftOrder.meltRadius": "找熔炉半径（格）",
+  "config.promaid.craftOrder.meltTimeoutSec": "熔炼限时（秒）",
+  "config.promaid.craftOrder.extraGatherItems": "额外可采材料",
+  "config.promaid.craftOrder.queueLimit": "委托队列上限",
   "task.maid_smart.craft": "委托合成",
   "task.maid_smart.craft.desc": "委托合成：右键「委托单」选目标物品与数量——她按配方树取料/合成指定数量后传送到你身边交付；缺料且属于简单可采场景（原木/石料/常见矿）时会自己找点、传送过去采够再回来；缺不可采材料会挂起等你补料，补上自动继续"
 }

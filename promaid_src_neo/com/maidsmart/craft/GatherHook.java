@@ -93,6 +93,8 @@ public final class GatherHook {
     private static volatile Map<Item, Kind> KIND_BY_ITEM;
     private static volatile Set<Block> WOOD_BLOCK_SET;
     private static volatile Map<Block, Integer> MINE_BLOCK_VALUE;
+    /** V2-B：配置里额外条目的"物品 → 目标方块"映射（probeBlocks 优先查它） */
+    private static volatile Map<Item, Set<Block>> EXTRA_PROBE;
 
     private static void ensure() {
         if (KIND_BY_ITEM != null) {
@@ -127,6 +129,43 @@ public final class GatherHook {
                     }
                 }
             }
+            // V2-B：叠加配置的额外可采材料（物品id[=WOOD|MINE]；目标方块按同名方块解析）
+            Map<Item, Set<Block>> extraProbe = new HashMap<>();
+            try {
+                for (String row : com.maidsmart.config.MaidSmartConfig.CRAFT_ORDER_EXTRA_GATHER.get()) {
+                    if (row == null || row.isBlank()) {
+                        continue;
+                    }
+                    String[] parts = row.trim().split("=");
+                    String rawId = parts[0].trim();
+                    if (rawId.isEmpty()) {
+                        continue;
+                    }
+                    String fullId = rawId.contains(":") ? rawId : "minecraft:" + rawId;
+                    String kindStr = parts.length > 1 ? parts[1].trim().toUpperCase(java.util.Locale.ROOT) : "MINE";
+                    Item it = item(fullId);
+                    Block b = block(fullId);
+                    if (it == null && b == null) {
+                        continue; // 这条忽略（文档口径）
+                    }
+                    boolean woodKind = "WOOD".equals(kindStr);
+                    if (it != null) {
+                        kind.put(it, woodKind ? Kind.WOOD : Kind.MINE);
+                    }
+                    if (b != null) {
+                        if (woodKind) {
+                            wood.add(b);
+                        } else {
+                            mine.put(b, TARGET_VALUE);
+                        }
+                    }
+                    if (it != null && b != null) {
+                        extraProbe.put(it, Set.of(b));
+                    }
+                }
+            } catch (Throwable ignored) {
+            }
+            EXTRA_PROBE = extraProbe;
             MINE_BLOCK_VALUE = mine;
             WOOD_BLOCK_SET = wood;
             KIND_BY_ITEM = kind;
@@ -181,6 +220,10 @@ public final class GatherHook {
     /** 找点用：该物品的目标方块集合（原木返回空集并提示用 tag——见 {@link #isWoodBlock}） */
     public static Set<Block> probeBlocks(Item item) {
         ensure();
+        Set<Block> extra = EXTRA_PROBE == null ? null : EXTRA_PROBE.get(item);
+        if (extra != null && !extra.isEmpty()) {
+            return extra; // V2-B：配置条目优先（同名方块映射）
+        }
         Kind k = kindOf(item);
         if (k == Kind.WOOD) {
             return Set.of();

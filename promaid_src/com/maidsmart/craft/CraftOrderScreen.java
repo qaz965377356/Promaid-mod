@@ -36,7 +36,7 @@ public class CraftOrderScreen extends Screen {
     private static final int CELL = 18;
     private static final int PER_PAGE = COLS * ROWS;
     private static final int POLL_TICKS = 20;
-    private static final int MAID_ROWS_MAX = 5;
+    private static final int MAID_ROWS_MAX = 4;
 
     /** 全物品缓存（注册表冻结后不变；名字排序） */
     private static List<Item> ALL_ITEMS;
@@ -141,14 +141,15 @@ public class CraftOrderScreen extends Screen {
         for (int i = 0; i < shown; i++) {
             String[] r = maidRows.get(i);
             String label = (r[0].equals(maidUuid) ? "§b▶ " : "§7") + r[1];
-            addBtn(label, rx, my + i * 19, 160, 17, b -> {
+            addBtn(label, rx, my + i * 18, 160, 17, b -> {
                 maidUuid = r[0];
                 rebuild();
             });
         }
-        int by = my + shown * 19 + 6;
-        addBtn("§a下单", rx, by, 78, 20, b -> submit());
-        addBtn("§c取消委托", rx + 82, by, 78, 20, b -> sendAction("cancel", "", count));
+        int by = my + shown * 18 + 6;
+        addBtn("§a下单", rx, by, 160, 20, b -> submit());
+        addBtn("§e取消当前", rx, by + 22, 78, 18, b -> sendAction("cancel", "", count));
+        addBtn("§c清空全部", rx + 82, by + 22, 78, 18, b -> sendAction("cancel_all", "", count));
 
         if (!requested) {
             requested = true;
