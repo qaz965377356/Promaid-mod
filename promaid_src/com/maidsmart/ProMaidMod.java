@@ -87,6 +87,9 @@ public class ProMaidMod {
         //（挂在 TLM 的 MaidTickEvent 上，tick 里用 ServerLevel 判侧）
         net.minecraftforge.common.MinecraftForge.EVENT_BUS.register(
                 new com.maidsmart.combat.AmmoResupplyManager.Hook());
+        // 女仆拾取过滤：不拾取 / 拾取即销毁（名单在杂项配置，TLM MaidPickupEvent 驱动）
+        net.minecraftforge.common.MinecraftForge.EVENT_BUS.register(
+                new com.maidsmart.pickup.PickupFilterManager.Hook());
         // v1.5.392 实测七百七十二：超越维度（BeyondDimensions）存储联动网络层（面板改服务端规则/开关）
         com.maidsmart.bd.MaidBdNetworking.register();
         // v1.3.0(beta) 实测七百四十五·点1【1.20.1 补】：飞行聚晶（Goety 位移聚晶）非 OP 入口——

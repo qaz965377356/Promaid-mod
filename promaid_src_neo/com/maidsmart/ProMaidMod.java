@@ -91,6 +91,9 @@ public class ProMaidMod {
         //（挂在 TLM 的 MaidTickEvent 上，tick 里用 ServerLevel 判侧）
         net.neoforged.neoforge.common.NeoForge.EVENT_BUS.register(
                 new com.maidsmart.combat.AmmoResupplyManager.Hook());
+        // 女仆拾取过滤：不拾取 / 拾取即销毁（名单在杂项配置，TLM MaidPickupEvent 驱动）
+        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.register(
+                new com.maidsmart.pickup.PickupFilterManager.Hook());
         // v1.2.0：指标石右键女仆 = 绑定/解绑（网络层经 @EventBusSubscriber 自注册）
         net.neoforged.neoforge.common.NeoForge.EVENT_BUS.register(
                 new com.maidsmart.build.IndexStoneInteractHandler());

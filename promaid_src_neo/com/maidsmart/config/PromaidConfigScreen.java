@@ -161,6 +161,11 @@ public class PromaidConfigScreen extends Screen {
     private boolean waterTable = false;
     private EditBox waterInput;
     private WaterList waterList;
+    // v1.3.x：女仆拾取名单子页（0=不拾取 1=拾取即销毁，两份名单共用一个页面）
+    private boolean pickupTable = false;
+    private int pickupTableMode = 0;
+    private EditBox pickupInput;
+    private PickupList pickupList;
     /** v1.2.5 实测六百五十二：烧制清单子页（四张名单共用一套「模式按钮 + 搜索网格 + 清单」交互） */
     private boolean cookTable = false;
     private int cookTableMode = 0;
@@ -591,6 +596,10 @@ public class PromaidConfigScreen extends Screen {
         }
         if (this.waterTable) {
             this.waterTableButtons(w, h, cx);
+            return;
+        }
+        if (this.pickupTable) {
+            this.pickupTableButtons(w, h, cx);
             return;
         }
         if (this.cookTable) {
@@ -1100,6 +1109,101 @@ public class PromaidConfigScreen extends Screen {
             this.rebuildWidgets();
         }).bounds(12, h - 34, 100, 20).build());
         this.bottomButtons(w, h, cx);
+    }
+
+    /** v1.3.x：女仆拾取名单子页——「不拾取」「拾取即销毁」两份名单共用一个页面（顶部按钮切换） */
+    private void pickupTableButtons(int w, int h, int cx) {
+        int panelLeft = Math.max(8, cx - 280);
+        int panelWidth = Math.min(560, w - 16);
+        int left = panelLeft + 10;
+        boolean destroy = this.pickupTableMode == 1;
+        this.addRenderableWidget(Button.builder(Component.literal(
+                        "\u00a7f当前名单：\u00a7" + (destroy ? "c拾取即销毁" : "e不拾取") + "\u00a77（点击切换）"),
+                b -> {
+                    this.pickupTableMode = destroy ? 0 : 1;
+                    this.init();
+                }).bounds(left, 46, panelWidth - 20, 18).build());
+        int inputY = 70;
+        this.pickupInput = new EditBox(this.font, left, inputY, panelWidth - 116, 18,
+                Component.literal("填物品注册名加进当前名单"));
+        this.pickupInput.setMaxLength(64);
+        this.pickupInput.setHint(Component.literal("minecraft:cobblestone 或 tacz:*"));
+        this.addRenderableWidget(this.pickupInput);
+        this.addRenderableWidget(Button.builder(Component.literal("加进名单"), b -> this.addPickupEntry())
+                .bounds(left + panelWidth - 106, inputY, 96, 18).build());
+        int listTop = inputY + 24;
+        int listH = Math.max(24, Math.min(h - 78 - listTop - 4, h - listTop - 36));
+        this.pickupList = new PickupList(this.font, left, listTop, panelWidth - 20, listH);
+        this.pickupList.setX(left);
+        this.addRenderableWidget(this.pickupList);
+        this.addRenderableWidget(Button.builder(Component.literal("\u2190 返回参数"), b -> {
+            this.pickupTable = false;
+            this.init();
+        }).bounds(12, h - 34, 100, 20).build());
+        this.bottomButtons(w, h, cx);
+    }
+
+    /** 当前子页编辑的那份名单（0=不拾取 1=拾取即销毁） */
+    private java.util.List<? extends String> pickupCurrentList() {
+        return this.pickupTableMode == 1
+                ? MaidSmartConfig.MISC_PICKUP_DESTROY.get()
+                : MaidSmartConfig.MISC_PICKUP_BLACKLIST.get();
+    }
+
+    private void pickupSetList(java.util.List<String> list) {
+        if (this.pickupTableMode == 1) {
+            MaidSmartConfig.MISC_PICKUP_DESTROY.set(list);
+        } else {
+            MaidSmartConfig.MISC_PICKUP_BLACKLIST.set(list);
+        }
+    }
+
+    /** 手动输入 id/通配加进当前名单（省略命名空间补 minecraft:；tacz:* 这类命名空间通配合法） */
+    private void addPickupEntry() {
+        if (this.pickupInput == null) {
+            return;
+        }
+        String text = this.pickupInput.getValue().trim().toLowerCase();
+        if (text.isEmpty()) {
+            return;
+        }
+        if (text.endsWith(":*")) {
+            if (text.length() <= 2 || text.indexOf(':') != text.length() - 2) {
+                return; // ":*" 这类非法通配
+            }
+        } else {
+            if (!text.contains(":")) {
+                text = "minecraft:" + text;
+            }
+            try {
+                if (net.minecraft.core.registries.BuiltInRegistries.ITEM
+                        .get(net.minecraft.resources.ResourceLocation.parse(text)) == null) {
+                    return; // 未知物品：不加
+                }
+            } catch (Exception ignored) {
+                return;
+            }
+        }
+        java.util.List<String> list = new java.util.ArrayList<>(pickupCurrentList());
+        if (!list.contains(text)) {
+            list.add(text);
+            pickupSetList(list);
+        }
+        this.pickupInput.setValue("");
+        if (this.pickupList != null) {
+            this.pickupList.rebuild();
+        }
+    }
+
+    /** 从当前名单移除 */
+    private void removePickupEntry(String id) {
+        java.util.List<String> list = new java.util.ArrayList<>(pickupCurrentList());
+        if (list.remove(id)) {
+            pickupSetList(list);
+        }
+        if (this.pickupList != null) {
+            this.pickupList.rebuild();
+        }
     }
 
     /**
@@ -4432,6 +4536,20 @@ public void render(GuiGraphics g, int index, int top, int left, int width, int h
                 s -> setInt(MaidSmartConfig.MISC_BUBBLE_LIMIT_MS, s), "气泡限频（毫秒）：对话气泡的最短显示间隔，防连续说话刷屏"));
         this.rows.add(new NumRow("女仆背包堆叠上限", String.valueOf(MaidSmartConfig.MAID_INV_STACK_LIMIT.get()),
                 s -> setInt(MaidSmartConfig.MAID_INV_STACK_LIMIT, s), "女仆背包堆叠上限（64~127，默认 64）：每个格子能堆多少——127 是 1.20.1 物品数量 byte 序列化的硬上限（超过会截断丢物品），故封顶；不可堆叠物品（工具/附魔书，上限 1）保持原样；只影响女仆背包格，不影响玩家背包与箱子。改动对新合入的堆生效，已超上限的旧堆不回收"));
+        // v1.3.x：女仆拾取名单（不拾取 / 拾取即销毁）
+        int pbCount = 0;
+        int pdCount = 0;
+        try {
+            pbCount = MaidSmartConfig.MISC_PICKUP_BLACKLIST.get().size();
+            pdCount = MaidSmartConfig.MISC_PICKUP_DESTROY.get().size();
+        } catch (Throwable ignored) {
+        }
+        this.rows.add(new BtnRow("女仆拾取名单", "管理 →（不拾取 " + pbCount + " · 销毁 " + pdCount + "）",
+                () -> {
+                    this.pickupTableMode = 0;
+                    this.pickupTable = true;
+                    this.init();
+                }, "女仆自动拾取的两份名单：不拾取=看见也无视（留在地上）；拾取即销毁=碰到就凭空销毁（适合圆石/泥土这类挖矿垃圾防淹背包，与不拾取同时命中以销毁优先）。添加支持注册 id（minecraft:cobblestone）、省略前缀（cobblestone）与命名空间通配（tacz:*）"));
     }
 
     private void utilityRows() {
@@ -5483,6 +5601,109 @@ public void render(GuiGraphics g, int index, int top, int left, int width, int h
         }
     }
 
+
+    /** v1.3.x：拾取名单列表（底部）——每行物品图标/通配名 + 名字 + 「移除」按钮 */
+    private class PickupList extends ObjectSelectionList<PickupList.PickupEntry> {
+        private final List<String> entries = new ArrayList<>();
+
+        PickupList(net.minecraft.client.gui.Font font, int x, int top, int width, int height) {
+            super(Minecraft.getInstance(), width, height, top, 22);
+            this.setX(x);
+            this.setWidth(width);
+            this.rebuild();
+        }
+
+        void rebuild() {
+            this.clearEntries();
+            this.entries.clear();
+            try {
+                this.entries.addAll(PromaidConfigScreen.this.pickupCurrentList());
+            } catch (Throwable ignored) {
+            }
+            for (String e : this.entries) {
+                this.addEntry(new PickupEntry(e));
+            }
+        }
+
+        @Override
+        public int getRowWidth() {
+            return Math.max(this.getWidth(), 120);
+        }
+
+        /** 同 WaterList：滚动条覆盖为低调样式 */
+        @Override
+        protected void renderItem(GuiGraphics g, int mx, int my, float pt,
+                                 int a, int b, int c, int d, int e) {
+            super.renderItem(g, mx, my, pt, a, b, c, d, e);
+            int sx = this.getX() + this.getRowWidth() - 6;
+            g.fill(sx, this.getY(), sx + 6, this.getBottom(), 0xFF101010);
+            int maxScroll = this.getMaxScroll();
+            if (maxScroll > 0) {
+                int area = this.getBottom() - this.getY();
+                int sh = Math.max(32, area * area / maxScroll);
+                sh = Math.min(sh, area - 8);
+                int sy = (int) (this.getScrollAmount() * (double) (area - sh)) + this.getY();
+                g.fill(sx, sy, sx + 4, sy + sh, 0x40FFFFFF);
+            }
+        }
+
+        /** 单行：物品图标（通配条目直接显示 id）+ 名字 + 「移除」按钮 */
+        private class PickupEntry extends ObjectSelectionList.Entry<PickupList.PickupEntry> {
+            private final String id;
+            private final Button removeButton;
+
+            PickupEntry(String id) {
+                this.id = id;
+                this.removeButton = Button.builder(Component.literal("移除"),
+                                b -> PromaidConfigScreen.this.removePickupEntry(this.id))
+                        .bounds(0, 0, 56, 18).build();
+            }
+
+            @Override
+            public void render(GuiGraphics g, int index, int top, int left, int width, int height,
+                                int mouseX, int mouseY, boolean hovered, float partialTick) {
+                int x = left + 4;
+                int y = top + 4;
+                String color = PromaidConfigScreen.this.pickupTableMode == 1 ? "\u00a7c" : "\u00a7e";
+                if (this.id.endsWith(":*")) {
+                    g.drawString(PromaidConfigScreen.this.font,
+                            Component.literal(color + "\u25c6 \u00a7f" + this.id + " \u00a77（命名空间通配）"),
+                            x, y, 0xFFAAAAAA, false);
+                } else {
+                    try {
+                        net.minecraft.world.item.Item item = net.minecraft.core.registries.BuiltInRegistries.ITEM
+                                .get(net.minecraft.resources.ResourceLocation.parse(this.id));
+                        if (item != null) {
+                            g.renderItem(new net.minecraft.world.item.ItemStack(item), x, y - 2);
+                            x += 20;
+                        }
+                    } catch (Exception ignored) {
+                    }
+                    g.drawString(PromaidConfigScreen.this.font,
+                            Component.literal(color + "\u25c6 \u00a7f"
+                                    + com.maidsmart.build.BlueprintLib.cnName(this.id)),
+                            x, y, 0xFFAAAAAA, false);
+                }
+                this.removeButton.setX(left + PickupList.this.getRowWidth() - 62);
+                this.removeButton.setY(top + 1);
+                this.removeButton.render(g, mouseX, mouseY, partialTick);
+            }
+
+            @Override
+            public boolean mouseClicked(double mx, double my, int button) {
+                if (button == 0 && this.removeButton.isMouseOver(mx, my)) {
+                    this.removeButton.mouseClicked(mx, my, 0);
+                    return true;
+                }
+                return false;
+            }
+
+            @Override
+            public Component getNarration() {
+                return Component.literal(this.id);
+            }
+        }
+    }
 
     /** 实测五百七十三：白名单列表（底部）——每行物品图标 + 中文名 + 「不喂了」按钮 */
     private class WaterList extends ObjectSelectionList<WaterList.WaterEntry> {

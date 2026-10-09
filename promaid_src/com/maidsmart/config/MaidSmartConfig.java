@@ -1245,6 +1245,10 @@ public static final ForgeConfigSpec.IntValue COMBAT_PLACED_LIFETIME;
     public static final ForgeConfigSpec.IntValue MISC_BUBBLE_LIMIT_MS;
     /** 女仆背包堆叠上限（64~127）：MaidBackpackStackLimitMixin 覆写 getStackLimit/getSlotLimit */
     public static final ForgeConfigSpec.IntValue MAID_INV_STACK_LIMIT;
+    /** 女仆不拾取名单：自动拾取时无视这些物品（留在地上） */
+    public static final ForgeConfigSpec.ConfigValue<List<? extends String>> MISC_PICKUP_BLACKLIST;
+    /** 女仆拾取即销毁名单：碰到这些掉落物直接销毁 */
+    public static final ForgeConfigSpec.ConfigValue<List<? extends String>> MISC_PICKUP_DESTROY;
     public static final ForgeConfigSpec.BooleanValue MISC_SCHEDULE_BUBBLE_ENABLED;
     public static final ForgeConfigSpec.DoubleValue MISC_SCHEDULE_BUBBLE_RADIUS;
     public static final ForgeConfigSpec.BooleanValue MISC_PICKUP_PRIORITY;
@@ -3034,6 +3038,13 @@ public static final ForgeConfigSpec.BooleanValue MISC_DIMENSION_FOLLOW;
         // 覆写 getStackLimit/getSlotLimit；127 = 1.20.1 物品数量 byte 序列化硬上限（压缩盒 javap 实证）
         MAID_INV_STACK_LIMIT = BUILDER.comment("女仆背包堆叠上限（64~127，默认 64=原版行为）：提高后女仆背包每个格子能堆更多（127 是 1.20.1 物品数量 byte 序列化的硬上限，再大会截断丢物品，故封顶）；不可堆叠物品（工具/附魔书，上限 1）保持原样不受影响；只影响女仆背包格，不影响玩家背包与箱子。改动只对新合入的堆生效，已超上限的旧堆不回收")
                 .translation("config.promaid.misc.maidInvStackLimit").defineInRange("maidInvStackLimit", 64, 64, 127);
+        // v1.3.x：女仆拾取过滤（PickupFilterManager 走 TLM 的 MaidPickupEvent，零 mixin）
+        MISC_PICKUP_BLACKLIST = BUILDER.comment("女仆不拾取名单（默认空）：女仆自动拾取时无视这些物品（留在地上不进包）。填物品注册 id（如 minecraft:cobblestone，面板添加时可省略 minecraft: 前缀），也支持命名空间通配（如 tacz:*）")
+                .translation("config.promaid.misc.pickupBlacklist")
+                .defineList("pickupBlacklist", List.of(), o -> o instanceof String s && !s.isEmpty());
+        MISC_PICKUP_DESTROY = BUILDER.comment("女仆拾取即销毁名单（默认空）：女仆碰到这些掉落物时**直接销毁**（凭空消失，不进背包也不留地上）——适合挖矿垃圾（圆石/泥土之类）防淹背包；与不拾取名单同时命中时以销毁优先。格式同上（注册 id / 命名空间通配）")
+                .translation("config.promaid.misc.pickupDestroy")
+                .defineList("pickupDestroy", List.of(), o -> o instanceof String s && !s.isEmpty());
         // v1.1.0 实测四百一十：排班女仆贴身情绪气泡（30 条文本池，触发 CD 30 秒）
         MISC_SCHEDULE_BUBBLE_ENABLED = BUILDER.comment("排班贴身气泡（默认开）：靠近排班中的女仆（3.5 格内）时，她随机冒出一条贴身气泡对话（30 条文本池，每只女仆 30 秒最多一条）——情绪价值小彩蛋；战斗/自保/睡觉中不打扰")
                 .translation("config.promaid.misc.scheduleBubbleEnabled").define("scheduleBubbleEnabled", true);

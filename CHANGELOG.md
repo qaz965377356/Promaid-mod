@@ -1,4 +1,11 @@
-﻿【女仆背包堆叠上限】新配置项 misc.maidInvStackLimit（64~127，默认 64=原版行为）：女仆背包每个格子能堆更多
+﻿【女仆拾取名单】不拾取 / 拾取即销毁两份可配置名单：自动拾取时无视指定物品，或碰到即凭空销毁
+  ①【玩家原话（规格）】「我另外还希望女仆虽然会自动拾取，但是会自动不拾取，或者销毁一些特定的物品。物品支持选择配置。」
+  ②【注入点：TLM 自带 API 事件，零 mixin】javap 实证 com.github.tartaricacid.touhoulittlemaid.api.event.MaidPickupEvent——ItemResultPre 在女仆拾取 ItemEntity 前发（带 isSimulate），setCanPickup(false) 即可拦下；字节码扫描确认 EntityMaid 自己就是该事件的触发方，钩子必然生效。
+  ③【两份名单的语义】不拾取 = 模拟/真实两态都拒拾（她看见也无视，物品留在地上）；拾取即销毁 = 模拟态放行（她照常锁定目标走过去）、真实态把 ItemEntity discard 掉（凭空消失，不进背包也不留地上）——适合挖矿垃圾（圆石/泥土）防淹背包。两份名单同时命中以销毁优先；名单外的物品 TLM 原行为一字不改。
+  ④【匹配口径】注册 id 精确（minecraft:cobblestone）；省略命名空间的条目按 minecraft: 前缀补齐再比；支持 tacz:* 这类命名空间通配（一行拦掉整个模组的掉落物）。
+  ⑤【两个新配置项】misc.pickupBlacklist / misc.pickupDestroy（默认都空 = 行为不变）；面板在「女仆背包堆叠上限」旁新增「女仆拾取名单」行——管理子页两份名单共用（顶部按钮切换），添加框支持注册 id/省略前缀/命名空间通配（未知物品不加），列表每行图标+中文名+移除按钮。
+  ⑥【验证】两树 javac EXITCODE=0（buildenv/build_mac.sh），verify_jar_classes / lang json / mixin 包登记全过；两树镜像（neo 1.21.1 / Forge 1.20.1）。
+【女仆背包堆叠上限】新配置项 misc.maidInvStackLimit（64~127，默认 64=原版行为）：女仆背包每个格子能堆更多
   ①【玩家原话（规格）】「我希望女仆背包的物品堆叠能大一点，能实现吗」——按简单实现落地。
   ②【为什么上限是 127】1.20.1 的原版 ItemStack 数量在网络同步与 NBT 存档里都是 byte（压缩盒 javap 实证：FriendlyByteBuf.writeItem 用 writeByte、NBT 的 Count 也是 byte）——女仆背包 GUI 同步与女仆存档都走这两条路，超过 127 的堆会被截断（114514 存成 82）等于下线丢物品，故封顶 127；要 114514 那种数量级需要整套绕开原版序列化（压缩盒那种自定义存储），不在简单实现范围。
   ③【落点】javap 实证 EntityMaid.maidInv = new MaidBackpackHandler(36, maid)（TLM 自己的 ItemStackHandler 子类，RangedWrapper 按背包等级截到 6/12/24/36）——mixin MaidBackpackHandler 一处全覆盖：女仆捡物/取物、玩家 GUI 搬运（BackpackSlot 是 SlotItemHandler，容量判定走 handler）、本模组取弹药/取材料代码。hideInv/taskInv 不受影响，玩家背包与箱子更不沾边。
