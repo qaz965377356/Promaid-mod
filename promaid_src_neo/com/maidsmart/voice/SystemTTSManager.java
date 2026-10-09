@@ -45,6 +45,30 @@ public final class SystemTTSManager {
     /** v1.1.0 实测四百二十：每只女仆上次内置日语语音包播放时间（独立最小间隔门禁） */
     private static final Map<UUID, Long> LAST_JAR_PACK = new ConcurrentHashMap<>();
 
+    /**
+     * 【免语音通道】弹药补给这类"系统状态播报"（缺材料：铜锭×2、火药×2）用内置日语
+     * 语音包/TTS 朗读非常违和（玩家原话：「缺子弹条件时的气泡说话，不需要带语音」）——
+     * 拦截点在 ChatBubbleLimitMixin（它只知道"有一次 addTextChatBubble"，不知道调用方），
+     * 所以用服务端线程的 ThreadLocal 标记：调用方 say() 前后 begin/end，mixin 查了再朗读。
+     * 同一线程内开始/结束必须配对（服务端气泡全部在主线程发出，无重入问题）。
+     */
+    private static final ThreadLocal<Boolean> NO_VOICE = ThreadLocal.withInitial(() -> Boolean.FALSE);
+
+    /** 当前线程的气泡是否免语音（ChatBubbleLimitMixin 朗读前查询） */
+    public static boolean isNoVoice() {
+        return NO_VOICE.get();
+    }
+
+    /** 开始免语音窗口（调用方在 addTextChatBubble 前调用） */
+    public static void beginNoVoice() {
+        NO_VOICE.set(Boolean.TRUE);
+    }
+
+    /** 结束免语音窗口（finally 里调用，保证配对） */
+    public static void endNoVoice() {
+        NO_VOICE.set(Boolean.FALSE);
+    }
+
     /** 审计：女仆卸载/移除时清理 TTS 限频表 */
     public static void forgetMaid(UUID maidUuid) {
         LAST_SPEAK.remove(maidUuid);

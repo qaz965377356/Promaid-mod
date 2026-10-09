@@ -225,6 +225,15 @@ public final class AmmoResupplyManager {
     /** maid → 下次允许检测的 gameTime（检测本身有反射开销，节流） */
     private static final Map<EntityMaid, long[]> NEXT_DETECT =
             Collections.synchronizedMap(new WeakHashMap<>());
+    /** maid → 下次允许应急创造的 gameTime（【每 120 秒一次】，尝试即计时，成败同频） */
+    private static final Map<EntityMaid, Long> EMERGENCY =
+            Collections.synchronizedMap(new WeakHashMap<>());
+
+    /** 低价值物品名单（原版注册名 path）：战斗中背包满腾位时优先扔这些，宁扔不错 */
+    private static final java.util.Set<String> LOW_VALUE_PATHS = java.util.Set.of(
+            "dirt", "coarse_dirt", "rooted_dirt", "grass_block", "cobblestone", "cobbled_deepslate",
+            "gravel", "sand", "red_sand", "netherrack", "granite", "diorite", "andesite",
+            "deepslate", "tuff", "calcite", "dripstone_block", "soul_sand", "soul_soil", "mud");
 
     /* ---------------- 挂载 ---------------- */
 
@@ -250,6 +259,7 @@ public final class AmmoResupplyManager {
             tickAttempt(maid, level, a);
             return;
         }
+        tickEmergency(maid, level);
         long now = level.getGameTime();
         long[] next = NEXT_DETECT.get(maid);
         if (next != null && now < next[0]) {
@@ -316,6 +326,139 @@ public final class AmmoResupplyManager {
         stepResolve(maid, level, a);
     }
 
+    /* ---------------- 应急创造（战斗中的最后手段） ----------------
+     *
+     * 【玩家原话】「每120秒一次，如果枪械确实没子弹了，身边不具备合成条件并且处于战斗中，
+     * 允许女仆每120秒一次，直接创造子弹补给到背包中。如果背包没空间了，自动扔掉一个
+     * 低价值的方块，如果确实没空间无法添加了，则女仆会气泡提示。」
+     *
+     * 与正常补给互补：正常补给要求"**不在**战斗"，应急只在"**战斗中**"生效；
+     * 每 {@code combat.ammoEmergencyInterval}（默认 120 秒）至多一次，尝试即计时（成败同频，
+     * 绝不刷屏）。创造的是**探针验收过的对口径弹药**（与正常补给同一套配方解析），
+     * 不是乱造——口径对不对仍由枪械 mod 自己回答。
+     */
+
+    private static void tickEmergency(EntityMaid maid, ServerLevel level) {
+        if (!com.maidsmart.config.MaidSmartConfig.AMMO_EMERGENCY_ENABLED.get()) {
+            return;
+        }
+        long now = level.getGameTime();
+        Long next = EMERGENCY.get(maid);
+        if (next != null && now < next) {
+            return;
+        }
+        // 快门（便宜的先查）：战斗中 + 没骑坐/没坐 + 主手枪 + 确实没弹（打不响也换不上）
+        if (!inCombat(maid) || maid.isPassenger() || maid.isMaidInSittingPose()) {
+            return;
+        }
+        ItemStack gun = maid.getMainHandItem();
+        if (gun.isEmpty() || !GunCompat.isGun(gun)) {
+            return;
+        }
+        if (GunCompat.canFeed(maid, gun) || GunCompat.canReload(maid, gun)) {
+            return;
+        }
+        int intervalSec = Math.max(10, com.maidsmart.config.MaidSmartConfig.AMMO_EMERGENCY_INTERVAL.get());
+        EMERGENCY.put(maid, now + intervalSec * 20L);
+        stepEmergency(maid, level);
+    }
+
+    private static void stepEmergency(EntityMaid maid, ServerLevel level) {
+        // ① 找对口径的配方（探针验收，与正常补给同一套）
+        Resolved r = resolveRecipe(maid, level);
+        if (r == null) {
+            say(maid, "这种子弹我没有配方，凭空也变不出来，先边打边撤吧！");
+            return;
+        }
+        // ② 身边具备合成条件（背包/附近箱子凑得出材料）→ 不凭空创造：
+        //    "不在战斗中制作"的规矩不破，打完这波正常补给会接手
+        IItemHandler inv = maid.getAvailableBackpackInv();
+        int radius = Math.max(4, com.maidsmart.config.MaidSmartConfig.AMMO_CRAFT_RADIUS.get());
+        if (achievableBatches(r.mats, inv, blockEntitiesNear(level, maid.blockPosition(), radius), 1) >= 1) {
+            com.maidsmart.tool.PromaidLog.log("弹药补给",
+                    com.maidsmart.tool.PromaidLog.nameOf(maid) + " 战斗中缺弹但材料凑得出，不应急创造（配方 " + r.desc + "）");
+            return;
+        }
+        // ③ 直接创造一组应急子弹塞进背包；放不下先扔一组低价值方块腾槽位
+        ItemStack out = r.output.copy();
+        if (!canInsert(inv, out)) {
+            if (!dropOneLowValueStack(maid, level, inv)) {
+                say(maid, "背包满了，应急子弹放不下！");
+                return;
+            }
+        }
+        ItemStack remain = ItemHandlerHelper.insertItemStacked(inv, out, false);
+        if (!remain.isEmpty()) {
+            // 腾出的槽位又被占等竞态：做出来的掉在她脚下，绝不凭空消失
+            net.minecraft.world.entity.item.ItemEntity drop = new net.minecraft.world.entity.item.ItemEntity(
+                    level, maid.getX(), maid.getY() + 0.5, maid.getZ(), remain);
+            level.addFreshEntity(drop);
+            say(maid, "背包满了，应急子弹掉在我脚边了！");
+        } else {
+            say(maid, "弹尽援绝，我先凭空做了一组应急子弹，接着打！");
+        }
+        boolean feed;
+        try {
+            feed = GunCompat.canFeed(maid, maid.getMainHandItem()) || GunCompat.canReload(maid, maid.getMainHandItem());
+        } catch (Throwable t) {
+            feed = true; // 兼容层异常时不冤枉她
+        }
+        com.maidsmart.tool.PromaidLog.log("弹药补给",
+                com.maidsmart.tool.PromaidLog.nameOf(maid) + " 战斗中应急创造了 " + out.getCount()
+                        + " 发弹药（" + r.desc + "，补给后打得响=" + feed + "）");
+    }
+
+    /** 身边（背包 + 附近容器）能凑出几组材料的完整合成（cap 封顶） */
+    private static int achievableBatches(List<Mat> mats, IItemHandler inv, List<BlockEntity> blockEntities, int cap) {
+        int batches = cap;
+        for (Mat m : mats) {
+            int have = countInInv(inv, m);
+            for (BlockEntity be : blockEntities) {
+                if (be instanceof Container c) {
+                    have += countInContainer(c, m);
+                }
+            }
+            batches = Math.min(batches, have / m.perBatch);
+        }
+        return batches;
+    }
+
+    /** 扔掉一整槽低价值方块（名单内最先找到的）掉在她脚下，腾出一个槽位；成功返回 true */
+    private static boolean dropOneLowValueStack(EntityMaid maid, ServerLevel level, IItemHandler inv) {
+        try {
+            for (int i = 0; i < inv.getSlots(); i++) {
+                ItemStack s = inv.getStackInSlot(i);
+                if (s.isEmpty() || !isLowValue(s)) {
+                    continue;
+                }
+                ItemStack dropped = inv.extractItem(i, s.getCount(), false);
+                if (dropped.isEmpty()) {
+                    continue;
+                }
+                net.minecraft.world.entity.item.ItemEntity drop = new net.minecraft.world.entity.item.ItemEntity(
+                        level, maid.getX(), maid.getY() + 0.5, maid.getZ(), dropped);
+                level.addFreshEntity(drop);
+                com.maidsmart.tool.PromaidLog.log("弹药补给",
+                        com.maidsmart.tool.PromaidLog.nameOf(maid) + " 背包满，扔了一组 "
+                                + dropped.getHoverName().getString() + " 腾位置");
+                return true;
+            }
+        } catch (Throwable ignored) {
+        }
+        return false;
+    }
+
+    /** 原版常见低价值方块（宁扔不错；模组物品一律不扔） */
+    private static boolean isLowValue(ItemStack s) {
+        try {
+            ResourceLocation key = BuiltInRegistries.ITEM.getKey(s.getItem());
+            return key != null && "minecraft".equals(key.getNamespace())
+                    && LOW_VALUE_PATHS.contains(key.getPath());
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
     /** 是否在战斗：原版目标字段 + ATTACK_TARGET 记忆双口径（两处都包住，异常按"不在战斗"算） */
     private static boolean inCombat(EntityMaid maid) {
         try {
@@ -337,7 +480,26 @@ public final class AmmoResupplyManager {
 
     /* ---------------- 阶段一：查配方（统一全量扫描，TACZ 工作台优先） ---------------- */
 
-    private static void stepResolve(EntityMaid maid, ServerLevel level, Attempt a) {
+    /** 一次配方解析的结果（正常补给与应急创造共用同一套探针口径） */
+    private static final class Resolved {
+        final List<Mat> mats;
+        final ItemStack output;
+        final String desc;
+        final boolean atTable;
+
+        Resolved(List<Mat> mats, ItemStack output, String desc, boolean atTable) {
+            this.mats = mats;
+            this.output = output;
+            this.desc = desc;
+            this.atTable = atTable;
+        }
+    }
+
+    /**
+     * 解析"这把枪对得上口径"的配方：全量扫描 + 探针验收（TACZ 工作台优先，原版合成台兜底）。
+     * 没有命中返回 null（调用方各自决定怎么报）。
+     */
+    private static Resolved resolveRecipe(EntityMaid maid, ServerLevel level) {
         Collection<RecipeHolder<?>> all;
         try {
             all = level.getRecipeManager().getRecipes(); // 全部类型的全部配方
@@ -364,12 +526,7 @@ public final class AmmoResupplyManager {
                     if (mats.isEmpty()) {
                         continue;
                     }
-                    a.mats = mats;
-                    a.outputTemplate = out.copy();
-                    a.recipeDesc = "TACZ工作台:" + holder.id();
-                    a.atTable = true;
-                    planFetch(maid, level, a);
-                    return;
+                    return new Resolved(mats, out.copy(), "TACZ工作台:" + holder.id(), true);
                 } catch (Throwable t) {
                     continue; // 单个配方坏了不拦别人
                 }
@@ -392,17 +549,25 @@ public final class AmmoResupplyManager {
                 if (mats.isEmpty()) {
                     continue; // 退化配方（无任何材料）——绝不无中生有
                 }
-                a.mats = mats;
-                a.outputTemplate = out.copy();
-                a.recipeDesc = "原版合成:" + holder.id();
-                a.atTable = false;
-                planFetch(maid, level, a);
-                return;
+                return new Resolved(mats, out.copy(), "原版合成:" + holder.id(), false);
             } catch (Throwable t) {
                 continue;
             }
         }
-        fail(maid, level, a, "这把枪的子弹我没有合成配方，做不出来，先省着点用哦～");
+        return null;
+    }
+
+    private static void stepResolve(EntityMaid maid, ServerLevel level, Attempt a) {
+        Resolved r = resolveRecipe(maid, level);
+        if (r == null) {
+            fail(maid, level, a, "这把枪的子弹我没有合成配方，做不出来，先省着点用哦～");
+            return;
+        }
+        a.mats = r.mats;
+        a.outputTemplate = r.output;
+        a.recipeDesc = r.desc;
+        a.atTable = r.atTable;
+        planFetch(maid, level, a);
     }
 
     /** 产物像不像弹药：注册名 path 含 ammo（tacz:ammo / tacz:ammo_box / *_ammo 全覆盖） */
@@ -903,9 +1068,16 @@ public final class AmmoResupplyManager {
         COOLDOWN.put(maid, level.getGameTime() + sec * 20L);
     }
 
+    /** 气泡播报（**免语音**：系统状态文本用日语语音包/TTS 朗读很违和——走 ThreadLocal
+     *  免语音窗口，ChatBubbleLimitMixin 查到标记就跳过朗读，气泡与聊天框同步照常） */
     private static void say(EntityMaid maid, String text) {
         try {
-            maid.getChatBubbleManager().addTextChatBubble(text);
+            com.maidsmart.voice.SystemTTSManager.beginNoVoice();
+            try {
+                maid.getChatBubbleManager().addTextChatBubble(text);
+            } finally {
+                com.maidsmart.voice.SystemTTSManager.endNoVoice();
+            }
         } catch (Throwable ignored) {
         }
     }

@@ -69,7 +69,9 @@ public abstract class ChatBubbleLimitMixin {
         }
         // v1.5.198：系统消息朗读——通过限频的真实气泡汇入 TTS
         //（①系统语音包命中 ②语音缓存命中 ③TLM TTS 合成；详细门禁见 SystemTTSManager）
-        if (this.maid != null) {
+        // v1.3.x：免语音通道——弹药补给这类系统状态播报调用方已标记
+        // beginNoVoice()/endNoVoice()（ThreadLocal），此处跳过朗读、气泡照常
+        if (this.maid != null && !com.maidsmart.voice.SystemTTSManager.isNoVoice()) {
             com.maidsmart.voice.SystemTTSManager.speak(this.maid, text);
         }
         // v1.5.68：气泡内容同步到主人聊天框（可细看；不进女仆记忆）

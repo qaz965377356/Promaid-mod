@@ -305,6 +305,10 @@ public static final ModConfigSpec.IntValue BUILD_CHEST_FETCH_COOLDOWN;
     public static final ModConfigSpec.IntValue AMMO_CRAFT_COOLDOWN;
     /** 单次合成组数：一次补给最多按配方合成几组 */
     public static final ModConfigSpec.IntValue AMMO_CRAFT_MAX_CRAFT;
+    /** 应急创造子弹（战斗中每 120 秒一次）总开关 */
+    public static final ModConfigSpec.BooleanValue AMMO_EMERGENCY_ENABLED;
+    /** 应急创造间隔（秒）：战斗中两次应急创造的最短间隔 */
+    public static final ModConfigSpec.IntValue AMMO_EMERGENCY_INTERVAL;
     // v1.1.0：主动切换战斗模式（主人受攻击 → 附近女仆立即切战斗，威胁消失还原）
     public static final ModConfigSpec.BooleanValue COMBAT_AUTO_SWITCH;
     public static final ModConfigSpec.IntValue COMBAT_AUTO_SWITCH_RADIUS;
@@ -2353,6 +2357,10 @@ public static final ModConfigSpec.BooleanValue MISC_DIMENSION_FOLLOW;
                 .translation("config.promaid.combat.ammoCraftCooldown").defineInRange("ammoCraftCooldown", 60, 15, 600);
         AMMO_CRAFT_MAX_CRAFT = BUILDER.comment("单次合成组数（默认 8）：一次补给最多按配方合成几组弹药（受材料与背包余量限制，做不满不会硬凑）")
                 .translation("config.promaid.combat.ammoCraftMaxCraft").defineInRange("ammoCraftMaxCraft", 8, 1, 64);
+        AMMO_EMERGENCY_ENABLED = BUILDER.comment("应急创造子弹（默认开）：**战斗中**枪械打不响也换不上弹、且身边不具备合成条件（材料不在背包/附近箱子）时，每 120 秒直接凭空做一组**对口径**的应急子弹塞进自己背包——战斗没弹药是会死的，这是最后的手段；非战斗时永远走正常补给（去箱子取料合成），绝不凭空创造。背包满时自动扔掉一组低价值方块（泥土/圆石/砂砾等原版方块，模组物品一律不扔）腾位置，确实放不下会气泡提示")
+                .translation("config.promaid.combat.ammoEmergency").define("ammoEmergency", true);
+        AMMO_EMERGENCY_INTERVAL = BUILDER.comment("应急创造子弹间隔（秒，默认 120）：战斗中两次应急创造的最短间隔（尝试即计时，成败同频，不会刷屏）")
+                .translation("config.promaid.combat.ammoEmergencyInterval").defineInRange("ammoEmergencyInterval", 120, 30, 1200);
         // v1.1.0：主动切换战斗模式——主人被敌对生物攻击时，附近非自保女仆无论什么任务
         // 都立即切战斗（枪械优先，其余按背包武器随机），威胁消失后自动还原原任务
         COMBAT_AUTO_SWITCH = BUILDER.comment("主动切换战斗模式（主人被敌对生物攻击时，附近女仆无论什么任务都立即切战斗保护主人；默认开启）")

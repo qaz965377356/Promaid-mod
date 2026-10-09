@@ -4108,6 +4108,10 @@ public class PromaidConfigScreen extends Screen {
                 s -> setInt(MaidSmartConfig.AMMO_CRAFT_COOLDOWN, s), "补给尝试间隔（秒，默认 60）：一次尝试（无论成败）之后至少隔这么久才会再试——失败原因每次只说一句，不会刷屏"));
         this.rows.add(new NumRow("单次合成组数", String.valueOf(MaidSmartConfig.AMMO_CRAFT_MAX_CRAFT.get()),
                 s -> setInt(MaidSmartConfig.AMMO_CRAFT_MAX_CRAFT, s), "单次合成组数（默认 8）：一次补给最多按配方合成几组弹药（受材料与背包余量限制，做不满不会硬凑）"));
+        this.rows.add(new BoolRow("应急创造子弹（战斗中）", MaidSmartConfig.AMMO_EMERGENCY_ENABLED.get(),
+                v -> MaidSmartConfig.AMMO_EMERGENCY_ENABLED.set(v), "应急创造子弹（默认开）：战斗中枪械打不响也换不上弹、且身边不具备合成条件（材料不在背包/附近箱子）时，每 120 秒直接凭空做一组对口径的应急子弹塞进自己背包——战斗没弹药是会死的，这是最后的手段；非战斗时永远走正常补给，绝不凭空创造。背包满时自动扔掉一组低价值方块（泥土/圆石/砂砾等原版方块，模组物品一律不扔）腾位置，确实放不下会气泡提示；弹药补给类气泡不带语音"));
+        this.rows.add(new NumRow("应急间隔（秒）", String.valueOf(MaidSmartConfig.AMMO_EMERGENCY_INTERVAL.get()),
+                s -> setInt(MaidSmartConfig.AMMO_EMERGENCY_INTERVAL, s), "应急创造子弹间隔（秒，默认 120）：战斗中两次应急创造的最短间隔（尝试即计时，成败同频，不会刷屏）"));
         this.rows.add(new NumRow("援护半径（格）", String.valueOf(MaidSmartConfig.COMBAT_ASSIST_RADIUS.get()),
                 s -> setInt(MaidSmartConfig.COMBAT_ASSIST_RADIUS, s), "援护半径（格，默认 16，0 = 关闭；借自别人改过的 TLM 1.5.3）：① 她没有目标时优先打「主人最近的仇人」（最近打主人的人 → 主人最近打的人，5 秒窗口内）；② 目标离她和她主人都超过这个半径就松手——不再追已经跑掉的怪（那是「追出去→被圈拽回来」的循环源头）。对象还要看得见、在她工作圈内、且非友军才生效"));
         // v1.1.0 实测二十一：武器权重可配置（选任务时加权随机——模组/原版各一条）
